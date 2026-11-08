@@ -5,4 +5,4 @@ startCommand:
     type: object
     properties: {}
   commandFunction: |-
-    (config) => ({ command: 'npx', args: ['-y', 'greenlitlab@0.1.1', 'mcp'] })
+    (config) => ({ command: 'npx', args: ['-y', 'greenlitlab@0.2.0', 'mcp'] })

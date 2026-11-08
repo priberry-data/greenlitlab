@@ -184,3 +184,5 @@ h2 { font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.035em; line-height:
 .hero > *, .ways > *, .steps > *, .checks > div > * { min-width: 0; }
 .dot.info { background: none; border: 1.5px solid var(--ink-3); }
 .watch a { color: var(--go); text-decoration-color: currentColor; font-weight: 500; }
+.all-fixes { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 10px; font-size: 14px; color: var(--ink-2); }
+.all-fixes .copy { border-color: var(--go); color: var(--go); }

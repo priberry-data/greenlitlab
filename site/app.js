@@ -19,8 +19,12 @@
     return c;
   };
 
-  const copyButton = (text) => {
-    const b = el("button", "copy", "Copy");
+  // The same wording as allPrompts() in src/grade.mjs, so the web and the CLI give the same combined prompt.
+  const allPrompts = (list) =>
+    [`My app has ${list.length} security problems to fix. Work through them in this order, one at a time. After each one, tell me what you changed before moving on. Don't change anything unrelated.`, ...list.map((f, i) => `${i + 1}. ${f.title}.\n${f.prompt}`)].join("\n\n");
+
+  const copyButton = (text, label = "Copy") => {
+    const b = el("button", "copy", label);
     b.type = "button";
     b.addEventListener("click", async () => {
       // The clipboard API needs focus and permission; the old way works almost everywhere else.
@@ -42,7 +46,7 @@
         t.remove();
       }
       b.textContent = ok ? "Copied" : "Select the text to copy";
-      setTimeout(() => (b.textContent = "Copy"), 1800);
+      setTimeout(() => (b.textContent = label), 1800);
     });
     return b;
   };
@@ -64,6 +68,12 @@
     card.append(head);
     if (!r.findings.length) card.append(el("p", "ok", "Nothing found that a stranger could use against you."));
 
+    const fixes = r.findings.filter((x) => x.prompt);
+    if (fixes.length > 1) {
+      const all = el("div", "all-fixes");
+      all.append(el("span", null, `${fixes.length} fixes. Paste them one at a time, or all at once:`), copyButton(allPrompts(fixes), "Copy all fixes"));
+      card.append(all);
+    }
     let n = 0;
     for (const x of r.findings) {
       const box = el("div", "finding");

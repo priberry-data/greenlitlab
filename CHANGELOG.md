@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 (8 November 2026)
+
+- 18 more kinds of leaked keys: Supabase secret keys (sb_secret_) and access tokens, OpenRouter, xAI, Perplexity, Hugging Face, Replicate, Pinecone, GitLab, npm, Shopify, Brevo, Mailchimp, Mailgun, Telegram bots, secret Mapbox tokens, private keys and Google service-account JSON. `sk_live_` keys are named for Stripe, Clerk and similar.
+- Clickjacking: flags a site any other site can put in a frame.
+- With `--mine`: Supabase sign-up open to anyone without email confirmation (which turns "signed-in only" rules into "anyone"), storage buckets that list files to anyone, and public `.env` files or `.git` folders. Hosts that answer every path with the home page don't count.
+- "Copy all fixes": every fix prompt in one, worst first, on the web, with `--prompt all`, and as `allFixes` in the MCP tool.
+
 ## 0.1.1 (8 November 2026)
 
 - Hosts that answer every missing file with the home page (Lovable, Netlify, Vercel) are no longer reported as publishing source maps.

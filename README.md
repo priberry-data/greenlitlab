@@ -14,14 +14,17 @@ npx greenlitlab myapp.lovable.app
 
 | Check | Where it runs |
 |---|---|
-| Secret keys (Stripe, OpenAI, AWS, GitHub and more) in the JavaScript every visitor downloads | everywhere |
+| Secret keys in the JavaScript every visitor downloads: 30 kinds, including Stripe, OpenAI, Anthropic, OpenRouter, Gemini, AWS, GitHub, Supabase secret keys, Telegram bots, private keys and service-account JSON | everywhere |
 | A Supabase `service_role` key in the browser | everywhere |
 | Source maps that hand out your source code | everywhere |
-| Missing security headers (CSP, framing) | everywhere |
+| Clickjacking (no `frame-ancestors` or `X-Frame-Options`) and no Content-Security-Policy | everywhere |
 | Supabase tables anyone can read with the public key | your own app, `--mine` |
+| Supabase storage buckets that list their files to anyone | your own app, `--mine` |
+| Supabase sign-up open to anyone without email confirmation | your own app, `--mine` |
+| A public `.env` file or `.git` folder | your own app, `--mine` |
 | Firebase Realtime Database and Firestore open to everyone | your own app, `--mine` |
 
-The database checks ask for a row count (Supabase) or one document name (Firebase), never for data. They run only when you say the app is yours, because testing someone else's database without permission isn't OK.
+The owner-only checks ask for a row count (Supabase), one file or document name (storage, Firebase), or the sign-up settings, never for data, and never write anything. They run only when you say the app is yours, because testing someone else's database without permission isn't OK.
 
 ## Commands
 
@@ -29,6 +32,7 @@ The database checks ask for a row count (Supabase) or one document name (Firebas
 npx greenlitlab <url>                 # grade an app
 npx greenlitlab <url> --mine          # your own app: database checks too
 npx greenlitlab <url> --prompt 1      # print fix prompt 1 only (pipe it to pbcopy)
+npx greenlitlab <url> --prompt all    # every fix in one prompt, worst first
 npx greenlitlab <url> --json          # the full result
 npx greenlitlab <url> --fail-on high  # exit 1 if anything this serious is found, for CI
 ```
@@ -40,7 +44,7 @@ The last result for each app is kept in `~/.greenlit/sites/` (grade, finding ids
 Add Greenlit as an MCP server:
 
 ```json
-{ "mcpServers": { "greenlit": { "command": "npx", "args": ["-y", "greenlitlab@0.1.1", "mcp"] } } }
+{ "mcpServers": { "greenlit": { "command": "npx", "args": ["-y", "greenlitlab@0.2.0", "mcp"] } } }
 ```
 
 Then ask your agent to check the app it just deployed and apply the fixes. The `greenlit_check` tool returns the grade, every finding and its fix prompt.

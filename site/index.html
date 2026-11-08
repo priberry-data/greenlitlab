@@ -83,11 +83,13 @@
   <section id="checks" class="wrap block">
     <h2>What it looks for</h2>
     <dl class="checks">
-      <div><dt>Secret keys in your code</dt><dd>Stripe, OpenAI, AWS, GitHub and other keys anyone can copy from the JavaScript your site sends.</dd><span class="scope">any app</span></div>
-      <div><dt>Your database's master key</dt><dd>A Supabase <code>service_role</code> key in the browser lets anyone read and change everything.</dd><span class="scope">any app</span></div>
-      <div><dt>Data anyone can read</dt><dd>Supabase tables and Firebase data open to the whole internet. Counted, never read.</dd><span class="scope mine">your app</span></div>
+      <div><dt>Secret keys in your code</dt><dd>30 kinds, from Stripe, OpenAI, OpenRouter and AWS to Telegram bots and private keys, that anyone can copy from the JavaScript your site sends.</dd><span class="scope">any app</span></div>
+      <div><dt>Your database's master key</dt><dd>A Supabase <code>service_role</code> or <code>sb_secret_</code> key in the browser lets anyone read and change everything.</dd><span class="scope">any app</span></div>
       <div><dt>Your source code, handed out</dt><dd>Source maps that let anyone download the code behind your app.</dd><span class="scope">any app</span></div>
-      <div><dt>Missing safety headers</dt><dd>The settings that stop other sites from framing your app or injecting scripts into it.</dd><span class="scope">any app</span></div>
+      <div><dt>Clickjacking and missing headers</dt><dd>The settings that stop other sites from framing your app or injecting scripts into it.</dd><span class="scope">any app</span></div>
+      <div><dt>Data anyone can read</dt><dd>Supabase tables, storage buckets and Firebase data open to the whole internet. Counted, never read.</dd><span class="scope mine">your app</span></div>
+      <div><dt>Sign-up that lets anyone in</dt><dd>Accounts without email confirmation turn "signed-in users only" rules into "anyone".</dd><span class="scope mine">your app</span></div>
+      <div><dt>Files that should never be online</dt><dd>A public <code>.env</code> file with all your keys, or the <code>.git</code> folder with your whole code history.</dd><span class="scope mine">your app</span></div>
     </dl>
   </section>
 

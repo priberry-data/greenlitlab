@@ -29,7 +29,7 @@ test("site: leaked keys and source maps are found from what every visitor downlo
   const { fetcher, calls } = fakeSite({ serviceRole: true });
   const r = await siteScan("app.example", { fetcher });
   const titles = r.findings.map((f) => f.title);
-  assert.ok(titles.some((t) => /live Stripe secret key/.test(t)));
+  assert.ok(titles.some((t) => /live secret key for payments/.test(t)));
   assert.ok(titles.some((t) => /service_role key is in the browser/.test(t)));
   assert.ok(titles.some((t) => /Source maps are public/.test(t)));
   assert.ok(titles.some((t) => /database wasn.t checked/.test(t)), "without --mine the database is not touched");
@@ -148,7 +148,9 @@ test("site: using a database is a note, not a problem, and costs no points", asy
   const r = await siteScan("spa.example", { fetcher: spaHost({ script, html }) });
   const note = r.findings.find((f) => f.id === "db:skipped");
   assert.equal(note?.severity, "info");
-  assert.equal(r.score, 100);
+  // Only the missing frame protection costs a point (a meta tag can't set frame-ancestors); the database note costs nothing.
+  assert.deepEqual(r.findings.filter((f) => f.severity !== "info").map((f) => f.id), ["framing"]);
+  assert.equal(r.score, 99);
   assert.equal(r.grade, "A");
 });
 

@@ -8,7 +8,8 @@
 - Source: https://github.com/priberry-data/greenlitlab
 
 ## What it checks
-- Secret keys (Stripe, OpenAI, AWS and others) in the JavaScript every visitor downloads
+- Secret keys (30 kinds: Stripe, OpenAI, OpenRouter, AWS, Supabase secret keys and more) in the JavaScript every visitor downloads
 - A Supabase service_role key in the browser
 - Supabase tables and Firebase data anyone can read (with --mine only; counts and names, never data)
-- Source maps, missing security headers
+- Source maps, clickjacking, missing security headers
+- With --mine: open sign-up without email confirmation, storage buckets anyone can list, public .env files and .git folders

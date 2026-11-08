@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { siteScan, compare, renderSite } from "../src/grade.mjs";
+import { siteScan, compare, renderSite, allPrompts } from "../src/grade.mjs";
 import { SEVERITY } from "../src/severity.mjs";
 import { loadLast, saveRun } from "../src/history.mjs";
 
@@ -20,6 +20,7 @@ const HELP = `greenlit ${VERSION}: is your AI-built app safe to launch?
   npx greenlitlab <url>                grade an app from what every visitor can see
   npx greenlitlab <url> --mine         your own app: also check which database tables anyone can read
   npx greenlitlab <url> --prompt 1     print just fix prompt 1, to copy (add | pbcopy on a Mac)
+  npx greenlitlab <url> --prompt all   every fix in one prompt, worst first
   npx greenlitlab <url> --json         the full result as JSON
   npx greenlitlab <url> --fail-on high exit 1 if anything this serious is found (for CI)
   npx greenlitlab mcp                  run as an MCP server
@@ -71,7 +72,14 @@ if (opt.version) {
   }
   if (timer) (clearInterval(timer), process.stderr.write("\r\x1b[K"));
 
-  if (opt.prompt) {
+  if (opt.prompt === "all") {
+    const all = allPrompts(result);
+    if (!all) {
+      console.error("greenlit: nothing to fix here.");
+      process.exit(2);
+    }
+    console.log(all);
+  } else if (opt.prompt) {
     const withPrompt = result.findings.filter((f) => f.prompt);
     const p = withPrompt[Number(opt.prompt) - 1];
     if (!p) {

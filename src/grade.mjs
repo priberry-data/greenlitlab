@@ -12,7 +12,8 @@ import { SEVERITY } from "./severity.mjs";
 
 // [pattern, id, what it is, what a stranger can do with it, where to revoke it]
 const SECRETS = [
-  [/sk_live_[0-9A-Za-z]{20,}/, "stripe", "A live Stripe secret key", "Anyone can charge, refund and read your customers' payments.", "Stripe → Developers → API keys → Roll key", "STRIPE_SECRET_KEY"],
+  // sk_live_ is used by Stripe and by other services (Clerk, Paystack); the advice is the same for all of them.
+  [/\bsk_live_[0-9A-Za-z]{20,}/, "stripe", "A live secret key for payments or sign-in (Stripe, Clerk or similar)", "With Stripe, anyone can charge, refund and read your customers' payments; with Clerk, anyone can manage your users.", "the dashboard of the service it belongs to (Stripe: Developers → API keys → Roll key; Clerk: API keys → roll the secret key)", "STRIPE_SECRET_KEY"],
   [/rk_live_[0-9A-Za-z]{20,}/, "stripe-restricted", "A live Stripe restricted key", "Anyone can do whatever this key allows on your Stripe account.", "Stripe → Developers → API keys → delete the restricted key", "STRIPE_RESTRICTED_KEY"],
   [/sk-(proj|svcacct|admin)-[0-9A-Za-z_-]{20,}|sk-[0-9A-Za-z]{48}\b/, "openai", "An OpenAI API key", "Anyone can run up your OpenAI bill.", "platform.openai.com → API keys → revoke", "OPENAI_API_KEY"],
   [/sk-ant-[0-9A-Za-z_-]{20,}/, "anthropic", "An Anthropic API key", "Anyone can run up your Anthropic bill.", "console.anthropic.com → API keys → disable", "ANTHROPIC_API_KEY"],
@@ -23,6 +24,24 @@ const SECRETS = [
   [/SG\.[0-9A-Za-z_-]{20,}\.[0-9A-Za-z_-]{20,}/, "sendgrid", "A SendGrid API key", "Anyone can send email as you.", "SendGrid → Settings → API Keys → delete", "SENDGRID_API_KEY"],
   [/\bAC[0-9a-f]{32}\b[\s\S]{0,80}?\b[0-9a-f]{32}\b/, "twilio", "Twilio credentials", "Anyone can send texts and make calls on your account.", "Twilio console → Account → API keys & tokens → rotate the auth token", "TWILIO_AUTH_TOKEN"],
   [/gsk_[0-9A-Za-z]{40,}/, "groq", "A Groq API key", "Anyone can run up your Groq bill.", "console.groq.com → API Keys → delete", "GROQ_API_KEY"],
+  [/\bsb_secret_[0-9A-Za-z_-]{20,}/, "supabase-secret", "A Supabase secret key", "It skips every security rule: anyone can read, change and delete all of your data and users.", "Supabase → Project Settings → API Keys → delete this secret key and create a new one", "SUPABASE_SECRET_KEY"],
+  [/\bsbp_[0-9a-f]{40}\b/, "supabase-token", "A Supabase personal access token", "Anyone can manage your Supabase account: every project, database and setting.", "supabase.com → Account → Access Tokens → revoke", "SUPABASE_ACCESS_TOKEN"],
+  [/\bsk-or-v1-[0-9a-f]{64}\b/, "openrouter", "An OpenRouter API key", "Anyone can run up your OpenRouter bill on any model.", "openrouter.ai → Keys → delete", "OPENROUTER_API_KEY"],
+  [/\bxai-[0-9A-Za-z]{60,}/, "xai", "An xAI (Grok) API key", "Anyone can run up your xAI bill.", "console.x.ai → API Keys → delete", "XAI_API_KEY"],
+  [/\bpplx-[0-9A-Za-z]{40,}/, "perplexity", "A Perplexity API key", "Anyone can run up your Perplexity bill.", "perplexity.ai → Settings → API → revoke", "PERPLEXITY_API_KEY"],
+  [/\bhf_[0-9A-Za-z]{34,}/, "huggingface", "A Hugging Face token", "Anyone can use your Hugging Face account and, with a write token, change your models.", "huggingface.co → Settings → Access Tokens → delete", "HF_TOKEN"],
+  [/\br8_[0-9A-Za-z]{37}\b/, "replicate", "A Replicate API token", "Anyone can run up your Replicate bill.", "replicate.com → Account → API tokens → delete", "REPLICATE_API_TOKEN"],
+  [/\bpcsk_[0-9A-Za-z_]{40,}/, "pinecone", "A Pinecone API key", "Anyone can read, change and delete your vector database.", "app.pinecone.io → API Keys → delete", "PINECONE_API_KEY"],
+  [/\b(?:glpat|gldt)-[0-9A-Za-z_-]{20,}/, "gitlab", "A GitLab token", "Access to your code, and possibly the right to change it.", "GitLab → Preferences → Access Tokens → revoke", "GITLAB_TOKEN"],
+  [/\bnpm_[0-9A-Za-z]{36}\b/, "npm", "An npm token", "Anyone can publish packages as you, which can infect everyone who installs them.", "npmjs.com → Access Tokens → delete", "NPM_TOKEN"],
+  [/\bshp(?:at|ca|pa|ss)_[0-9a-fA-F]{32}\b/, "shopify", "A Shopify access token", "Anyone can read and change your store, orders and customers.", "Shopify admin → Apps → your app → API credentials → rotate", "SHOPIFY_ACCESS_TOKEN"],
+  [/\bxkeysib-[0-9a-f]{64}-[0-9A-Za-z]{16}\b/, "brevo", "A Brevo (Sendinblue) API key", "Anyone can send email as you and read your contacts.", "Brevo → SMTP & API → API Keys → delete", "BREVO_API_KEY"],
+  [/\b[0-9a-f]{32}-us\d{1,2}\b/, "mailchimp", "A Mailchimp API key", "Anyone can read your mailing list and send campaigns as you.", "Mailchimp → Profile → Extras → API keys → delete", "MAILCHIMP_API_KEY"],
+  [/\bkey-[0-9a-f]{32}\b/, "mailgun", "A Mailgun API key", "Anyone can send email as you.", "Mailgun → API Security → delete the key", "MAILGUN_API_KEY"],
+  [/\b\d{8,10}:AA[0-9A-Za-z_-]{33}\b/, "telegram", "A Telegram bot token", "Anyone can take over your bot and read the messages people send it.", "Telegram → @BotFather → /revoke", "TELEGRAM_BOT_TOKEN"],
+  [/\bsk\.eyJ[0-9A-Za-z_-]{20,}\.[0-9A-Za-z_-]{20,}/, "mapbox", "A secret Mapbox token", "Anyone can use your Mapbox account and run up your bill. (Public pk. tokens are fine.)", "account.mapbox.com → Tokens → delete", "MAPBOX_SECRET_TOKEN"],
+  [/-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----(?:\\n|\\r|\s)+[A-Za-z0-9+\/=]{60,}/, "private-key", "A private key", "Whatever this key signs in to or signs for, anyone can now do too.", "the service the key belongs to: replace the key pair there and delete the old one", "PRIVATE_KEY"],
+  [/"type"\s*:\s*"service_account"[\s\S]{0,400}"private_key"/, "gcp-service-account", "A Google Cloud or Firebase service-account key", "It's an admin key: anyone can reach your Firebase and Google Cloud data with full rights.", "Google Cloud console → IAM → Service Accounts → Keys → delete this key", "GOOGLE_APPLICATION_CREDENTIALS"],
   [/AIza[0-9A-Za-z_-]{35}(?=[\s\S]{0,400}(generativelanguage|gemini))/, "gemini", "A Google AI (Gemini) API key", "Anyone can run up your Gemini bill. (Firebase keys are public by design; this one sits next to Gemini calls.)", "aistudio.google.com → API keys → delete", "GEMINI_API_KEY"],
 ];
 const JWT = /eyJ[0-9A-Za-z_-]{10,}\.eyJ[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}/g;
@@ -87,11 +106,11 @@ const safeUrl = (u, base) => {
   }
 };
 
-async function get(url, { timeout = 15000, headers = {}, method = "GET", max = 8 * 1024 * 1024, fetcher = fetch } = {}) {
+async function get(url, { timeout = 15000, headers = {}, method = "GET", body = null, max = 8 * 1024 * 1024, fetcher = fetch } = {}) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeout);
   try {
-    const r = await fetcher(url, { method, headers: { "user-agent": "greenlit (+https://greenlit.priberry.com)", ...headers }, signal: ctl.signal, redirect: "follow" });
+    const r = await fetcher(url, { method, headers: { "user-agent": "greenlit (+https://greenlit.priberry.com)", ...headers }, ...(body != null && { body }), signal: ctl.signal, redirect: "follow" });
     const text = method === "HEAD" ? "" : await readCapped(r, max);
     return { status: r.status, headers: r.headers, text, url: r.url };
   } catch (e) {
@@ -129,6 +148,26 @@ const P = {
   firestore: (coll) => ({
     first: null,
     prompt: `Anyone on the internet can read the Firestore collection "${coll}". Rewrite my Firestore security rules so "${coll}" (and every other collection) is closed by default, and a signed-in user can only read and write documents they own, for example match /${coll}/{id} { allow read, write: if request.auth != null && request.auth.uid == resource.data.userId; }. Adjust the owner field to whatever this app uses. Show me the final rules.`,
+  }),
+  signup: () => ({
+    first: "Supabase → Authentication → Sign In / Providers → Email: turn on \"Confirm email\". If only people you invite should get in, turn off \"Allow new users to sign up\" too.",
+    prompt: "In my Supabase project, anyone can create an account with any email address without confirming it. Find every Row Level Security policy that only checks that a user is signed in (for example `to authenticated using (true)`, or `auth.role() = 'authenticated'`), because to a stranger those are open. Rewrite each one so a user reaches only their own rows (auth.uid() = user_id), or only rows they were given access to. List each policy you changed, and show me the SQL.",
+  }),
+  storage: (bucket) => ({
+    first: null,
+    prompt: `In my Supabase project, anyone on the internet can list the files in the storage bucket "${bucket}". Change the storage policies so files in "${bucket}" can only be listed and read by the user who uploaded them (for example, store files under a folder named after auth.uid() and check (storage.foldername(name))[1] = auth.uid()::text). If some files must be public, keep them in a separate public bucket and tell me which. Show me the SQL.`,
+  }),
+  envFile: (path) => ({
+    first: `Assume every key in ${path} is public: revoke and replace each one in the dashboard of the service it belongs to.`,
+    prompt: `My live site serves the file ${path} to anyone who asks for it. Make sure ${path} is never deployed: add it to .gitignore and to the host's ignore settings, move its values into the host's environment variable settings, redeploy, and confirm that opening ${path} on the live site now returns "not found".`,
+  }),
+  gitDir: () => ({
+    first: "Assume anyone can now download your whole code history, including any key ever committed: revoke and replace those keys.",
+    prompt: "My live site serves its .git folder, so anyone can download my whole code history. Change the deployment so the .git folder is never uploaded or served (deploy only the build output folder), redeploy, and confirm that opening /.git/config on the live site returns \"not found\".",
+  }),
+  framing: () => ({
+    first: null,
+    prompt: "Any other website can show my app inside a hidden frame and trick my users into clicking things (clickjacking). Add the response header `Content-Security-Policy: frame-ancestors 'self'` (or `X-Frame-Options: DENY`) in my host's header settings, redeploy, and confirm the header is there.",
   }),
   sourceMaps: () => ({
     first: null,
@@ -255,6 +294,42 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     }
   }
 
+  // Your own app only: files that should never be on a live site. A real .env has KEY=value lines; a real .git
+  // folder has a config file with [core]. Anything else (often the home page served for every path) doesn't count.
+  if (mine) {
+    for (const path of ["/.env", "/.env.local", "/.env.production"]) {
+      const r = await get(new URL(path, origin).href, fetchOpts({ max: 4096 }));
+      if (r.status === 200 && !/^\s*</.test(r.text) && /^[A-Z][A-Z0-9_]*=/m.test(r.text)) {
+        add({ id: `exposed:${path}`, severity: "critical", where: path, title: `Your ${path} file is public`, why: "This file usually holds every secret key the app uses, and anyone can download it.", fix: `Stop deploying ${path}, then revoke every key it contained.`, ...P.envFile(path) });
+        break;
+      }
+    }
+    const g = await get(new URL("/.git/config", origin).href, fetchOpts({ max: 4096 }));
+    if (g.status === 200 && /\[core\]/.test(g.text))
+      add({ id: "exposed:git", severity: "high", where: "/.git/", title: "Your code history (.git folder) is public", why: "Anyone can download your full source code and every past version of it, including keys that were committed once and later removed.", fix: "Deploy only the build output, never the .git folder.", ...P.gitDir() });
+  }
+
+  // Your own app only: Supabase settings that quietly make "signed-in users only" mean "anyone".
+  if (mine && supabase?.url && supabase.anon) {
+    const h = { apikey: supabase.anon, ...(supabase.anon.startsWith("eyJ") && { authorization: `Bearer ${supabase.anon}` }) };
+    const st = await get(`${supabase.url}/auth/v1/settings`, fetchOpts({ headers: h, max: 65536 }));
+    try {
+      const cfg = JSON.parse(st.text);
+      if (st.status === 200 && cfg.disable_signup === false && cfg.mailer_autoconfirm === true)
+        add({ id: "supabase:open-signup", severity: "high", where: "Supabase Auth settings", title: "Anyone can sign up with any email, without confirming it", why: "Rules that only check \"is the user signed in?\" protect nothing: a stranger can make an account in seconds, even with someone else's email address.", fix: "Turn on email confirmation in Supabase Auth, and make every policy check who owns the row, not just that someone is signed in.", ...P.signup() });
+    } catch {}
+    // Storage: which common buckets list their files to anyone? Asks for one file name, never the file.
+    for (const bucket of ["avatars", "uploads", "files", "documents", "images", "attachments", "receipts", "invoices", "private"]) {
+      const r = await get(`${supabase.url}/storage/v1/object/list/${bucket}`, fetchOpts({ method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ prefix: "", limit: 1, offset: 0 }), max: 65536 }));
+      let n = 0;
+      try {
+        n = Array.isArray(JSON.parse(r.text)) ? JSON.parse(r.text).length : 0;
+      } catch {}
+      if (r.status === 200 && n > 0)
+        add({ id: `supabase:storage:${bucket}`, severity: /receipt|invoice|document|private|attachment/.test(bucket) ? "critical" : "high", where: `Supabase storage bucket "${bucket}"`, title: `Anyone can list the files in the storage bucket "${bucket}"`, why: "Strangers can see every file name in it and, if the files are readable too, download them. Greenlit asked for one file name and opened nothing.", fix: `In Supabase → Storage → Policies, limit "${bucket}" so users list and read only their own files.`, ...P.storage(bucket) });
+    }
+  }
+
   // Firebase: is the Realtime Database or a common Firestore collection open to anyone?
   let firebaseOpen = null;
   if (mine && firebase?.project) {
@@ -290,6 +365,10 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
   if (!page.headers?.get("content-security-policy") && !/http-equiv=["']Content-Security-Policy/i.test(page.text))
     add({ id: "csp", severity: "low", where: "response headers", title: "No Content-Security-Policy", why: "If an attacker gets a script into the page (through a comment, a profile field or a dependency), nothing stops it from sending your users' data out.", fix: "Add a Content-Security-Policy header in your host's settings.", ...P.csp([...thirdParty].slice(0, 6)) });
 
+  const csp = page.headers?.get("content-security-policy") || "";
+  if (!page.headers?.get("x-frame-options") && !/frame-ancestors/i.test(csp))
+    add({ id: "framing", severity: "low", where: "response headers", title: "Other sites can put your app in a frame", why: "A malicious page can show your app inside an invisible frame and trick your users into clicking buttons they can't see (clickjacking).", fix: "Add the header Content-Security-Policy: frame-ancestors 'self' (or X-Frame-Options: DENY).", ...P.framing() });
+
   const penalty = findings.reduce((a, f) => a + SEVERITY[f.severity], 0);
   const score = Math.max(0, 100 - penalty);
   const grade = score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "F";
@@ -308,6 +387,15 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     findings,
     pasteInto: builder || "your AI app builder or coding agent",
   };
+}
+
+// Every fix prompt in one, worst first, for people who'd rather paste once. The builder still gets one
+// problem at a time, and checks in after each.
+export function allPrompts(r) {
+  const list = r.findings.filter((f) => f.prompt);
+  if (!list.length) return "";
+  const head = `My app has ${list.length} security problem${list.length > 1 ? "s" : ""} to fix. Work through them in this order, one at a time. After each one, tell me what you changed before moving on. Don't change anything unrelated.`;
+  return [head, ...list.map((f, i) => `${i + 1}. ${f.title}.\n${f.prompt}`)].join("\n\n");
 }
 
 export const VERDICT = {
@@ -379,7 +467,7 @@ export function renderSite(r, change, { color = true, mine = r.mine } = {}) {
   }
   L.push(dim(`Read only what the site serves to every visitor${mine ? "; database checked with counts and names only, never data" : ""}.`));
   if (n) {
-    L.push(dim(`Fix the red items first, one prompt at a time. Copy one prompt: npx greenlitlab ${new URL(r.url).host}${mine ? " --mine" : ""} --prompt 1 | pbcopy`));
+    L.push(dim(`Fix the red items first, one prompt at a time. Copy one prompt: npx greenlitlab ${new URL(r.url).host}${mine ? " --mine" : ""} --prompt 1 | pbcopy  (or --prompt all for every fix in one)`));
     L.push(dim("After the fixes are live, run this same command again: it shows what got fixed."));
   }
   return L.join("\n");

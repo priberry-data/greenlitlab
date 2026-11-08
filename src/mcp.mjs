@@ -1,13 +1,13 @@
 // Greenlit as an MCP server (stdio, newline-delimited JSON-RPC), so an agent in Claude, Cursor or VS Code
 // can grade the app it just deployed and apply the fix prompts itself.
 import readline from "node:readline";
-import { siteScan, compare } from "./grade.mjs";
+import { siteScan, compare, allPrompts } from "./grade.mjs";
 
 const TOOLS = [
   {
     name: "greenlit_check",
     description:
-      "Grade a deployed web app (built with Lovable, Bolt, v0, Replit, Emergent or by hand) A to F for what a stranger can use against it: secret keys shipped in its JavaScript, a Supabase service_role key in the browser, source maps, missing security headers. Every finding has a plain-English reason and a fix prompt. Reads only what the site serves to every visitor. Call it again after a fix: `change` shows what got fixed. For database checks on the user's own app, have them run `npx greenlitlab <url> --mine`.",
+      "Grade a deployed web app (built with Lovable, Bolt, v0, Replit, Emergent or by hand) A to F for what a stranger can use against it: secret keys shipped in its JavaScript (Stripe, OpenAI, OpenRouter, Supabase secret keys and 25 more kinds), a Supabase service_role key in the browser, source maps, clickjacking and missing security headers. Every finding has a plain-English reason and a fix prompt; `allFixes` has every fix in one prompt, worst first. Reads only what the site serves to every visitor. Call it again after a fix: `change` shows what got fixed. For the user's own app, have them run `npx greenlitlab <url> --mine`: it also checks which database tables and storage buckets anyone can read, open sign-up, and public .env or .git files.",
     inputSchema: { type: "object", properties: { url: { type: "string", description: "The app's address, for example myapp.lovable.app" } }, required: ["url"], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -21,7 +21,7 @@ async function call(name, args = {}) {
   // Remembered for this session only, so a second call shows what the fixes changed.
   const change = compare(last.get(result.url), result);
   last.set(result.url, { at: new Date().toISOString(), score: result.score, grade: result.grade, findings: result.findings.map(({ id, severity, title }) => ({ id, severity, title })) });
-  return { ...result, change };
+  return { ...result, change, allFixes: allPrompts(result) };
 }
 
 export function serve({ version, input = process.stdin, output = process.stdout } = {}) {
