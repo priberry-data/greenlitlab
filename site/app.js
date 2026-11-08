@@ -13,6 +13,12 @@
     return e;
   };
 
+  const wrapCard = (child) => {
+    const c = el("div", "card");
+    c.append(child);
+    return c;
+  };
+
   const copyButton = (text) => {
     const b = el("button", "copy", "Copy");
     b.type = "button";
@@ -29,7 +35,8 @@
   };
 
   function render(r) {
-    out.replaceChildren();
+    const card = el("div", "card");
+    out.replaceChildren(card);
     const host = (() => {
       try {
         return new URL(r.url).host;
@@ -37,34 +44,34 @@
         return r.url;
       }
     })();
-    const head = el("div", "head");
+    const head = el("div", "r-head");
     const text = el("div");
-    text.append(el("h2", null, r.verdict), el("p", "meta", `${host}${r.builder ? ` · built with ${r.builder}` : ""} · score ${r.score}/100${r.cached ? " · checked in the last 10 minutes" : ""}`));
-    head.append(el("div", `badge ${r.grade}`, r.grade), text);
-    out.append(head);
-    if (!r.findings.length) out.append(el("p", "ok", "Nothing found that a stranger could use against you."));
+    text.append(el("p", "r-verdict", r.verdict), el("p", "r-meta", `${host}${r.builder ? ` · built with ${r.builder}` : ""} · ${r.score}/100${r.cached ? " · checked in the last 10 minutes" : ""}`));
+    head.append(el("span", `grade g-${r.grade}`, r.grade), text);
+    card.append(head);
+    if (!r.findings.length) card.append(el("p", "ok", "Nothing found that a stranger could use against you."));
 
     let n = 0;
     for (const x of r.findings) {
       const box = el("div", "finding");
       const h = el("h3");
-      h.append(el("span", `sev ${x.severity}`, x.severity), document.createTextNode(x.title));
+      h.append(el("i", `dot ${x.severity}`), document.createTextNode(x.title), el("span", "sev", x.severity));
       box.append(h, el("p", null, x.why));
       if (x.first) box.append(el("p", "first", `Do this yourself first: ${x.first}`));
       if (x.prompt) {
         n++;
-        const p = el("div", "prompt");
-        const bar = el("div", "bar");
-        bar.append(el("span", null, `Fix ${n}: paste this into ${r.pasteInto}`), copyButton(x.prompt));
+        const p = el("div", "r-prompt");
+        const bar = el("div", "r-prompt-bar");
+        bar.append(el("span", null, `Fix ${n} · paste into ${r.pasteInto}`), copyButton(x.prompt));
         p.append(bar, el("pre", null, x.prompt));
         box.append(p);
       } else if (x.id === "db:skipped") {
-        box.append(el("p", "next", `To check your database too, run this on your own computer: npx greenlitlab ${host} --mine`));
+        box.append(el("p", "next", `Your app? Check the database too: npx greenlitlab ${host} --mine`));
       } else if (x.fix) box.append(el("p", "next", x.fix));
-      out.append(box);
+      card.append(box);
     }
     const red = r.findings.some((x) => x.severity === "critical" || x.severity === "high");
-    if (n) out.append(el("p", "note", `${red ? "Fix the red items first, one prompt at a time. " : ""}When a fix is live, check again here. A new result is ready after ten minutes.`));
+    if (n) card.append(el("p", "note", `${red ? "Fix the red items first, one prompt at a time. " : ""}When a fix is live, check again here. A new result is ready after ten minutes.`));
 
     // The paid monitor doesn't exist yet. This button counts how many people want it, and keeps nothing about them.
     const w = el("div", "watch");
@@ -84,20 +91,20 @@
       w.replaceChildren(p);
     });
     w.append(b);
-    out.append(w);
+    card.append(w);
     out.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function check(url) {
     go.disabled = true;
-    out.replaceChildren(el("p", "wait", `Looking at ${url} the way a stranger would…`));
+    out.replaceChildren(wrapCard(el("p", "wait", `Looking at ${url} the way a stranger would…`)));
     try {
       const res = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
       const data = await res.json().catch(() => ({ error: "Something went wrong. Try again in a minute." }));
-      if (!res.ok || data.error) out.replaceChildren(el("p", "err", data.error || "Something went wrong. Try again in a minute."));
+      if (!res.ok || data.error) out.replaceChildren(wrapCard(el("p", "err", data.error || "Something went wrong. Try again in a minute.")));
       else render(data);
     } catch {
-      out.replaceChildren(el("p", "err", "Couldn't reach Greenlit. Check your connection and try again."));
+      out.replaceChildren(wrapCard(el("p", "err", "Couldn't reach Greenlit. Check your connection and try again.")));
     } finally {
       go.disabled = false;
     }

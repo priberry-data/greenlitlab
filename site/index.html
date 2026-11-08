@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Greenlit · Is your AI-built app safe to launch?</title>
-<meta name="description" content="Built your app with Lovable, Bolt, v0, Replit or Emergent? Paste its address and get a grade from A to F, what each problem means in plain words, and a prompt to paste back into your builder that fixes it. Free, nothing to install.">
+<title>Greenlit · Know it's safe before you launch</title>
+<meta name="description" content="Greenlit checks apps built with Lovable, Bolt, v0, Replit and Emergent for leaked keys and open data, explains each problem in plain words, and writes the prompt that fixes it. Free, nothing to install.">
 <link rel="canonical" href="https://greenlit.priberry.com/">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0b0d0c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#0b0c0b">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Greenlit">
-<meta property="og:title" content="Is your AI-built app safe to launch? Check it in ten seconds">
+<meta property="og:title" content="Know it's safe before you launch">
 <meta property="og:description" content="Paste your Lovable, Bolt, v0 or Replit app's address. Get a grade, plain-English reasons and the prompt that fixes each problem.">
 <meta property="og:url" content="https://greenlit.priberry.com/">
 <meta property="og:image" content="https://greenlit.priberry.com/og.png">
@@ -22,62 +22,105 @@
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
-<header class="top">
-  <a class="brand" href="/" aria-label="Greenlit home"><img src="/icon.svg" alt="" width="28" height="28">Greenlit</a>
-  <nav aria-label="Sections"><a href="#how">How it works</a><a href="#checks">What we check</a><a href="#yours">Your own app</a></nav>
+<header class="top wrap">
+  <a class="mark" href="/" aria-label="Greenlit home">greenl<span class="i">ı</span>t</a>
+  <nav aria-label="Sections">
+    <a href="#how">How it works</a>
+    <a href="#checks">What it checks</a>
+    <a href="#anywhere">CLI &amp; MCP</a>
+    <a class="gh" href="https://github.com/priberry-data/greenlitlab">GitHub</a>
+  </nav>
 </header>
 
 <main id="main">
-  <section class="hero">
-    <h1>Is your app safe to launch?</h1>
-    <p class="lede">Built it with Lovable, Bolt, v0, Replit or Emergent? Paste its address. In about ten seconds you get a grade, what each problem means in plain words, and a prompt to paste back into your builder that fixes it.</p>
-    <form id="f" class="check" novalidate>
-      <label for="u" class="sr">Your app's address</label>
-      <input id="u" name="url" type="text" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="myapp.lovable.app" required>
-      <button id="go" type="submit">Check my app</button>
-    </form>
-    <p class="fine">Free. No sign-up. We read only what your site already shows every visitor.</p>
+  <section class="hero wrap">
+    <div class="pitch">
+      <p class="eyebrow">For apps built with Lovable · Bolt · v0 · Replit · Emergent</p>
+      <h1>Know it's safe<br>before you launch.</h1>
+      <p class="lede">Greenlit looks at your app the way a stranger would. It finds leaked keys and open data, tells you in plain words what each one means, and writes the prompt that fixes it.</p>
+      <form id="f" class="bar" novalidate>
+        <label for="u" class="sr">Your app's address</label>
+        <span class="scheme" aria-hidden="true">https://</span>
+        <input id="u" name="url" type="text" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="myapp.lovable.app" required>
+        <button id="go" type="submit">Run check</button>
+      </form>
+      <p class="fine">Free. No sign-up. Reads only what every visitor already sees.</p>
+    </div>
+
+    <figure class="sample" aria-label="An example result">
+      <figcaption class="sample-tag">Example result</figcaption>
+      <div class="r-head">
+        <span class="grade g-D">D</span>
+        <div>
+          <p class="r-verdict">Strangers can use this against you.</p>
+          <p class="r-meta">your-app.lovable.app · built with Lovable</p>
+        </div>
+      </div>
+      <ul class="r-list">
+        <li><i class="dot crit"></i><span>Stripe secret key in your JavaScript</span><em>critical</em></li>
+        <li><i class="dot crit"></i><span>Anyone can read the <code>profiles</code> table</span><em>critical</em></li>
+        <li><i class="dot low"></i><span>No Content-Security-Policy</span><em>low</em></li>
+      </ul>
+      <div class="r-prompt">
+        <div class="r-prompt-bar"><span>Fix 1 · paste into Lovable</span><span class="fake-copy">Copy</span></div>
+        <p>My app ships a Stripe secret key in its frontend code. Move every call that uses it into a Supabase Edge Function, read the key from a secret there, and remove it from the client…</p>
+      </div>
+      <p class="r-after"><span class="grade-sm g-A">A</span> after three prompts and one key change</p>
+    </figure>
   </section>
 
-  <section id="out" class="result" aria-live="polite"></section>
+  <section id="out" class="report wrap" aria-live="polite"></section>
 
-  <section id="how" class="band">
+  <section id="how" class="wrap block">
     <h2>Check. Fix. Check again.</h2>
     <ol class="steps">
-      <li><b>Check</b><span>Paste your app's address. Greenlit looks at it the way a curious stranger would.</span></li>
-      <li><b>Fix</b><span>Each problem comes with a prompt. Paste it into your builder, one at a time, worst first.</span></li>
-      <li><b>Check again</b><span>Run the check after the fix is live. The grade goes up, and you know it worked.</span></li>
+      <li><span class="n">01</span><b>Check</b><p>Paste your app's address. In about ten seconds you get a grade from A to F and every problem a stranger could use.</p></li>
+      <li><span class="n">02</span><b>Fix</b><p>Each problem comes with a prompt written for your builder. Paste them in one at a time, worst first.</p></li>
+      <li><span class="n">03</span><b>Check again</b><p>Run it once the fix is live. The grade goes up, and you know the fix worked instead of hoping it did.</p></li>
     </ol>
   </section>
 
-  <section id="checks" class="band">
-    <h2>What we look for</h2>
-    <ul class="grid">
-      <li><b>Secret keys in your code</b><span>Stripe, OpenAI, AWS and other keys that anyone can copy from the JavaScript your site sends to visitors.</span></li>
-      <li><b>Your database's master key</b><span>A Supabase service_role key in the browser lets anyone read and change everything.</span></li>
-      <li><b>Data anyone can read</b><span>Supabase tables and Firebase data open to the whole internet. Checked only for your own app, on your computer.</span></li>
-      <li><b>Your source code, handed out</b><span>Source maps that let anyone download the code behind your app.</span></li>
-      <li><b>Missing safety headers</b><span>The browser settings that stop other sites from framing or injecting into yours.</span></li>
-      <li><b>Which builder you used</b><span>So every fix prompt is written for the place you'll paste it.</span></li>
-    </ul>
+  <section id="checks" class="wrap block">
+    <h2>What it looks for</h2>
+    <dl class="checks">
+      <div><dt>Secret keys in your code</dt><dd>Stripe, OpenAI, AWS, GitHub and other keys anyone can copy from the JavaScript your site sends.</dd><span class="scope">any app</span></div>
+      <div><dt>Your database's master key</dt><dd>A Supabase <code>service_role</code> key in the browser lets anyone read and change everything.</dd><span class="scope">any app</span></div>
+      <div><dt>Data anyone can read</dt><dd>Supabase tables and Firebase data open to the whole internet. Counted, never read.</dd><span class="scope mine">your app</span></div>
+      <div><dt>Your source code, handed out</dt><dd>Source maps that let anyone download the code behind your app.</dd><span class="scope">any app</span></div>
+      <div><dt>Missing safety headers</dt><dd>The settings that stop other sites from framing your app or injecting scripts into it.</dd><span class="scope">any app</span></div>
+    </dl>
   </section>
 
-  <section id="yours" class="band">
-    <h2>Go deeper on your own app</h2>
-    <p>The web check can't look inside your database, because it can't know the app is yours. On your own computer it can. It counts which Supabase tables or Firebase data anyone can read, without reading the data itself.</p>
-    <pre class="cmd"><code>npx greenlitlab myapp.lovable.app --mine</code></pre>
-    <p class="fine">Needs Node.js. Works inside Claude, Cursor and VS Code too: add <code>npx -y greenlitlab mcp</code> as an MCP server and ask your agent to check the app it just deployed.</p>
+  <section id="anywhere" class="wrap block">
+    <h2>Run it where you build</h2>
+    <div class="ways">
+      <div class="way">
+        <b>Your own app, deeper</b>
+        <p>On your computer Greenlit can check your database too, because it can ask whether the app is yours.</p>
+        <pre><code><span class="pr">$</span> npx greenlitlab myapp.lovable.app --mine</code></pre>
+      </div>
+      <div class="way">
+        <b>Inside your agent</b>
+        <p>Add it as an MCP server in Claude, Cursor or VS Code, and ask your agent to check what it just deployed.</p>
+        <pre><code><span class="pr">$</span> npx -y greenlitlab mcp</code></pre>
+      </div>
+      <div class="way">
+        <b>In CI</b>
+        <p>Fail the build when something serious opens up after a change.</p>
+        <pre><code><span class="pr">$</span> npx greenlitlab $APP_URL --fail-on high</code></pre>
+      </div>
+    </div>
   </section>
 
-  <section class="band promise">
-    <h2>What we never do</h2>
-    <p>We never sign in to your app, never read your users' data and never test a database we can't confirm is yours. We keep a check's result for ten minutes so nobody can use us to hammer a site, then it's gone. No cookies, no trackers, no ads.</p>
+  <section class="wrap block promise">
+    <p>We never sign in to your app, never read your users' data, and never test a database we can't confirm is yours. A result is kept for ten minutes so nobody can use us to hammer a site, then it's gone. No cookies. No trackers. <a href="https://github.com/priberry-data/greenlitlab">Open source</a>, so you can check us too.</p>
   </section>
 </main>
 
-<footer class="foot">
-  <span>Greenlit is made by <a href="https://priberry.com">Priberry</a>, the crash-test lab for AI agents.</span>
-  <span><a href="https://github.com/priberry-data/greenlitlab">Open source</a> · <a href="https://priberry.com/privacy/">Privacy</a></span>
+<footer class="foot wrap">
+  <span class="mark small">greenl<span class="i">ı</span>t</span>
+  <span>Made by <a href="https://priberry.com">Priberry</a>, the crash-test lab for AI agents.</span>
+  <span><a href="https://github.com/priberry-data/greenlitlab">GitHub</a> · <a href="https://priberry.com/privacy/">Privacy</a></span>
 </footer>
 
 <script src="/app.js" defer></script>
