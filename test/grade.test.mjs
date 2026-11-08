@@ -16,7 +16,7 @@ function fakeSite({ serviceRole = false } = {}) {
     if (url === "https://app.example/") return { ...res(200, '<script type="module" src="/assets/index.js"></script>'), url };
     if (url === "https://app.example/assets/index.js")
       return res(200, `const s="${SB}",k="${anon}";const stripe="sk_live_${"a".repeat(24)}";${serviceRole ? `const admin="${jwt({ iss: "supabase", role: "service_role" })}";` : ""}\n//# sourceMappingURL=index.js.map`);
-    if (url === "https://app.example/assets/index.js.map") return res(200);
+    if (url === "https://app.example/assets/index.js.map") return res(200, JSON.stringify({ version: 3, sources: ["src/App.tsx"], mappings: "AAAA" }));
     if (url === `${SB}/rest/v1/`) return res(200, JSON.stringify({ paths: { "/": {}, "/profiles": {}, "/posts": {}, "/rpc/do_thing": {} } }));
     if (url.startsWith(`${SB}/rest/v1/profiles`)) return res(206, "", { "content-range": "0-0/1234" });
     if (url.startsWith(`${SB}/rest/v1/posts`)) return res(200, "", { "content-range": "*/0" });
@@ -32,7 +32,7 @@ test("site: leaked keys and source maps are found from what every visitor downlo
   assert.ok(titles.some((t) => /live Stripe secret key/.test(t)));
   assert.ok(titles.some((t) => /service_role key is in the browser/.test(t)));
   assert.ok(titles.some((t) => /Source maps are public/.test(t)));
-  assert.ok(titles.some((t) => /Database checks skipped/.test(t)), "without --mine the database is not touched");
+  assert.ok(titles.some((t) => /database wasn.t checked/.test(t)), "without --mine the database is not touched");
   assert.ok(!calls.some((c) => c.url.includes("/rest/v1/")));
   assert.equal(r.grade, "F");
 });
@@ -118,4 +118,55 @@ test("site: a re-check shows what got fixed, and history keeps no keys", async (
   assert.match(text, /✓ fixed {2}Your Supabase service_role key/);
   assert.match(text, /Then paste this into your AI app builder or coding agent:/);
   assert.equal(loadLast(after.url, true, dir), null, "runs with and without --mine are compared separately");
+});
+
+// Hosts like Lovable, Netlify and Vercel answer any missing file with the home page. That must not count.
+function spaHost({ script = 'console.log(1)\n//# sourceMappingURL=index.js.map', html = '<script type="module" src="/assets/index.js"></script>' } = {}) {
+  const page = (u) => ({ status: 200, url: u, headers: new Headers({ "content-type": "text/html" }), text: async () => html });
+  return async (url) => {
+    if (url === "https://spa.example/") return page(url);
+    if (url === "https://spa.example/assets/index.js") return { status: 200, url, headers: new Headers({ "content-type": "application/javascript" }), text: async () => script };
+    return page(url); // the SPA fallback: every other path is the home page, with 200
+  };
+}
+
+test("site: a host that serves the home page for missing files is not reported as leaking source maps", async () => {
+  const r = await siteScan("spa.example", { fetcher: spaHost() });
+  assert.ok(!r.findings.some((f) => f.id === "sourcemaps"), "no source-map finding");
+  assert.equal(r.scripts, 1, "the fallback page is not counted as a script");
+});
+
+test("site: a broken script address in the page doesn't stop the check", async () => {
+  const r = await siteScan("spa.example", { fetcher: spaHost({ html: '<script src="http://[broken"></script><script type="module" src="/assets/index.js"></script>' }) });
+  assert.equal(r.scripts, 1);
+});
+
+test("site: using a database is a note, not a problem, and costs no points", async () => {
+  const anonKey = `${Buffer.from('{"alg":"HS256"}').toString("base64url")}.${Buffer.from(JSON.stringify({ iss: "supabase", ref: "abcdefghijklmnopqrst", role: "anon" })).toString("base64url")}.${"s".repeat(20)}`;
+  const script = `const u="https://abcdefghijklmnopqrst.supabase.co",k="${anonKey}";`;
+  const html = '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'"><script type="module" src="/assets/index.js"></script>';
+  const r = await siteScan("spa.example", { fetcher: spaHost({ script, html }) });
+  const note = r.findings.find((f) => f.id === "db:skipped");
+  assert.equal(note?.severity, "info");
+  assert.equal(r.score, 100);
+  assert.equal(r.grade, "A");
+});
+
+test("site: an address that isn't a web address gets a clear error", async () => {
+  await assert.rejects(() => siteScan("not a url", { fetcher: spaHost() }), /doesn't look like a web address/);
+});
+
+test("site: only the first part of a huge file is read", async () => {
+  let pulled = 0;
+  const big = new ReadableStream({
+    pull(c) {
+      pulled++;
+      if (pulled > 1000) return c.close();
+      c.enqueue(new Uint8Array(64 * 1024).fill(97));
+    },
+  });
+  const fetcher = async (url) => ({ status: 200, url, headers: new Headers({ "content-type": "text/html" }), body: big, text: async () => { throw new Error("must stream"); } });
+  const r = await siteScan("huge.example", { fetcher, maxBytes: 256 * 1024 });
+  assert.ok(pulled < 20, `read ${pulled} chunks`);
+  assert.equal(r.grade, "A");
 });

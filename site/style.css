@@ -182,3 +182,5 @@ h2 { font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.035em; line-height:
 }
 
 .hero > *, .ways > *, .steps > *, .checks > div > * { min-width: 0; }
+.dot.info { background: none; border: 1.5px solid var(--ink-3); }
+.watch a { color: var(--go); text-decoration-color: currentColor; font-weight: 500; }

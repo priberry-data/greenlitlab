@@ -19,20 +19,51 @@ export function publicTarget(input) {
   return { url: `${u.protocol}//${h}${u.pathname === "/" ? "/" : u.pathname}` };
 }
 
-// A fixed window per visitor per hour, in KV. Approximate on purpose: KV is eventually consistent, and a
-// few extra checks don't matter; a script asking hundreds of times does.
-export async function allow(env, request, { key, limit }) {
-  // Only a salted hash of the address is kept, for an hour, so the counter can't be turned back into an IP.
+// Short-lived state (cached results, per-visitor counters) lives in Cloudflare's cache, not in KV:
+// the free plan allows about 1,000 KV writes a day, which a busy launch day would use up in an hour.
+// The cache is per data centre, so limits are approximate. That's fine: a few extra checks don't matter;
+// a script asking hundreds of times does.
+const slot = (name) => new Request(`https://greenlit.priberry.com/__state/${encodeURIComponent(name)}`);
+
+export async function cacheGet(name) {
+  try {
+    const r = await caches.default.match(slot(name));
+    return r ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function cachePut(name, value, seconds) {
+  try {
+    await caches.default.put(slot(name), new Response(JSON.stringify(value), { headers: { "content-type": "application/json", "cache-control": `max-age=${seconds}` } }));
+  } catch {}
+}
+
+// A fixed window per visitor per hour. Only a salted hash of the address is kept, for an hour.
+export async function allow(request, { key, limit }) {
   const hour = Math.floor(Date.now() / 3600e3);
-  const raw = `${request.headers.get("cf-connecting-ip") || "unknown"}|${hour}|greenlit`;
+  const raw = `${request.headers.get("cf-connecting-ip") || "unknown"}|${hour}|greenlit-v2`;
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
   const id = [...new Uint8Array(digest)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
-  const k = `rl:${key}:${id}:${hour}`;
-  const n = Number((await env.CHECK.get(k)) || 0);
+  const name = `rl:${key}:${id}:${hour}`;
+  const n = Number((await cacheGet(name)) || 0);
   if (n >= limit) return false;
-  await env.CHECK.put(k, String(n + 1), { expirationTtl: 3700 });
+  await cachePut(name, n + 1, 3700);
   return true;
 }
+
+// Counts for the price test, in KV so they last. Never lets a failed write break the request.
+export async function bump(env, keys) {
+  for (const k of keys) {
+    try {
+      await env.CHECK.put(k, String(Number((await env.CHECK.get(k)) || 0) + 1));
+    } catch {}
+  }
+}
+
+// The cache only works on the real address, so the API answers there only (and on a local dev server).
+export const servedHere = (request) => /^(greenlit\.priberry\.com|localhost|127\.0\.0\.1)$/.test(new URL(request.url).hostname);
 
 export const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra } });

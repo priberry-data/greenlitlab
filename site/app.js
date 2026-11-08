@@ -23,12 +23,25 @@
     const b = el("button", "copy", "Copy");
     b.type = "button";
     b.addEventListener("click", async () => {
+      // The clipboard API needs focus and permission; the old way works almost everywhere else.
+      let ok = false;
       try {
         await navigator.clipboard.writeText(text);
-        b.textContent = "Copied";
+        ok = true;
       } catch {
-        b.textContent = "Select and copy";
+        const t = document.createElement("textarea");
+        t.value = text;
+        t.setAttribute("readonly", "");
+        t.style.position = "fixed";
+        t.style.opacity = "0";
+        document.body.append(t);
+        t.select();
+        try {
+          ok = document.execCommand("copy");
+        } catch {}
+        t.remove();
       }
+      b.textContent = ok ? "Copied" : "Select the text to copy";
       setTimeout(() => (b.textContent = "Copy"), 1800);
     });
     return b;
