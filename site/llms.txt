@@ -1,0 +1,14 @@
+# Greenlit
+
+> Is your AI-built app safe to launch? Greenlit grades a deployed web app (built with Lovable, Bolt, v0, Replit, Emergent or by hand) from A to F for what a stranger can use against it, explains each problem in plain words, and gives a prompt to paste back into the app builder that fixes it. Made by Priberry. Free and open source (Apache-2.0).
+
+- Web: https://greenlit.priberry.com (paste an address; reads only what every visitor can see)
+- CLI: `npx greenlitlab myapp.lovable.app` · own app, with database checks: `npx greenlitlab myapp.lovable.app --mine`
+- MCP server: `npx -y greenlitlab mcp`, one tool, `greenlit_check`
+- Source: https://github.com/priberry-data/greenlitlab
+
+## What it checks
+- Secret keys (Stripe, OpenAI, AWS and others) in the JavaScript every visitor downloads
+- A Supabase service_role key in the browser
+- Supabase tables and Firebase data anyone can read (with --mine only; counts and names, never data)
+- Source maps, missing security headers

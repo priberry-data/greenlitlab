@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://greenlit.priberry.com/sitemap.xml

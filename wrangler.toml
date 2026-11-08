@@ -1,0 +1,9 @@
+# Cloudflare Pages for greenlit.priberry.com: the static site in site/, plus the web check in functions/.
+name = "greenlit-site"
+pages_build_output_dir = "site"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "CHECK"
+id = "903273c94d7f4e218821d0d78541f1e0"

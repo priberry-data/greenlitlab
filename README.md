@@ -1,0 +1,52 @@
+# Greenlit
+
+**Is your AI-built app safe to launch?** Greenlit grades a deployed app from A to F for what a stranger can use against it. It explains each problem in plain words and gives you a prompt to paste back into Lovable, Bolt, v0, Replit or Emergent that fixes it. Run it again after the fix, and it shows what got fixed.
+
+**In the browser:** [greenlit.priberry.com](https://greenlit.priberry.com). Paste your app's address. Nothing to install.
+
+**On your computer:**
+
+```bash
+npx greenlitlab myapp.lovable.app
+```
+
+## What it checks
+
+| Check | Where it runs |
+|---|---|
+| Secret keys (Stripe, OpenAI, AWS, GitHub and more) in the JavaScript every visitor downloads | everywhere |
+| A Supabase `service_role` key in the browser | everywhere |
+| Source maps that hand out your source code | everywhere |
+| Missing security headers (CSP, framing) | everywhere |
+| Supabase tables anyone can read with the public key | your own app, `--mine` |
+| Firebase Realtime Database and Firestore open to everyone | your own app, `--mine` |
+
+The database checks ask for a row count (Supabase) or one document name (Firebase), never for data. They run only when you say the app is yours, because testing someone else's database without permission isn't OK.
+
+## Commands
+
+```bash
+npx greenlitlab <url>                 # grade an app
+npx greenlitlab <url> --mine          # your own app: database checks too
+npx greenlitlab <url> --prompt 1      # print fix prompt 1 only (pipe it to pbcopy)
+npx greenlitlab <url> --json          # the full result
+npx greenlitlab <url> --fail-on high  # exit 1 if anything this serious is found, for CI
+```
+
+The last result for each app is kept in `~/.greenlit/sites/` (grade, finding ids and titles only, never keys) so the next run can show what changed.
+
+## In Claude, Cursor, VS Code and other agents
+
+Add Greenlit as an MCP server:
+
+```json
+{ "mcpServers": { "greenlit": { "command": "npx", "args": ["-y", "greenlitlab@0.1.0", "mcp"] } } }
+```
+
+Then ask your agent to check the app it just deployed and apply the fixes. The `greenlit_check` tool returns the grade, every finding and its fix prompt.
+
+## Made by Priberry
+
+Greenlit comes from [Priberry](https://priberry.com), the crash-test lab for AI agents. Its sister tools: [Crumple](https://crumple.priberry.com) crash-tests coding agents, and [Tare](https://tare.priberry.com) shows what they cost.
+
+Apache-2.0. Found a problem? [Open an issue](https://github.com/priberry-data/greenlitlab/issues), or see [SECURITY.md](SECURITY.md).
