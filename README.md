@@ -40,7 +40,7 @@ The last result for each app is kept in `~/.greenlit/sites/` (grade, finding ids
 Add Greenlit as an MCP server:
 
 ```json
-{ "mcpServers": { "greenlit": { "command": "npx", "args": ["-y", "greenlitlab@0.1.0", "mcp"] } } }
+{ "mcpServers": { "greenlit": { "command": "npx", "args": ["-y", "greenlitlab@0.1.1", "mcp"] } } }
 ```
 
 Then ask your agent to check the app it just deployed and apply the fixes. The `greenlit_check` tool returns the grade, every finding and its fix prompt.
