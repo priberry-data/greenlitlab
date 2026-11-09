@@ -24,6 +24,8 @@ npx greenlitlab myapp.lovable.app
 | A public `.env` file or `.git` folder | your own app, `--mine` |
 | Firebase Realtime Database and Firestore open to everyone | your own app, `--mine` |
 
+Greenlit reads all of the app's own scripts, including lazy-loaded pages and the app's own CDN, and tells you if a check ran out of room or couldn't read the code. Grades follow the danger: one critical problem means D at best, one high problem means C at best.
+
 The owner-only checks ask for a row count (Supabase), one file or document name (storage, Firebase), or the sign-up settings, never for data, and never write anything. They run only when you say the app is yours, because testing someone else's database without permission isn't OK.
 
 ## Commands

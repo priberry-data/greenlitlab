@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert";
-import { siteScan } from "../src/grade.mjs";
+import { siteScan, explainError, renderSite } from "../src/grade.mjs";
+import { SEVERITY } from "../src/severity.mjs";
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const anon = `${b64({ alg: "HS256" })}.${b64({ iss: "supabase", ref: "abcdefghijklmnopqrst", role: "anon" })}.${"s".repeat(20)}`;
@@ -89,4 +90,113 @@ test("--mine: a storage bucket that lists files to anyone is found, asking for o
   const listCall = calls.find((c) => c.url.endsWith("/storage/v1/object/list/receipts"));
   assert.equal(JSON.parse(listCall.body).limit, 1);
   assert.ok(!calls.some((c) => /\/storage\/v1\/object\/(public|authenticated|sign)\//.test(c.url)), "never downloads a file");
+});
+
+// --- coverage, grades and dead addresses (9 November 2026) ---
+const site = (files, { page = '<script type="module" src="/assets/index.js"></script>', headers = {}, status = 200 } = {}) => {
+  const calls = [];
+  const fetcher = async (url) => {
+    calls.push(url);
+    const u = new URL(url);
+    const r = (s, body, type) => ({ status: s, url, headers: new Headers({ "content-type": type, ...(type === "text/html" ? headers : {}) }), text: async () => body });
+    if (u.pathname === "/" && u.hostname === "app.example") return r(status, page, "text/html");
+    if (url in files) return r(200, files[url], "application/javascript");
+    if (u.pathname in files) return r(200, files[u.pathname], "application/javascript");
+    return r(200, page, "text/html"); // the SPA fallback
+  };
+  return { fetcher, calls };
+};
+const LEAK = `const k="sk_live_${"a".repeat(24)}";`;
+
+test("coverage: a key on a lazy-loaded page is found through Vite's list of chunks", async () => {
+  const { fetcher } = site({
+    "/assets/index.js": 'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Admin-abc.js","assets/x.css"])))=>i.map(i=>d[i]);',
+    "/assets/Admin-abc.js": LEAK,
+  });
+  const r = await siteScan("app.example", { fetcher });
+  assert.ok(r.findings.some((f) => f.id === "secret:stripe"));
+});
+
+test("coverage: chains deeper than two levels, and side-effect imports, are followed", async () => {
+  const { fetcher } = site({ "/assets/index.js": 'import"./a.js";', "/assets/a.js": 'import("./b.js")', "/assets/b.js": 'export*from"./c.js"', "/assets/c.js": LEAK });
+  const r = await siteScan("app.example", { fetcher });
+  assert.equal(r.scripts, 4);
+  assert.ok(r.findings.some((f) => f.id === "secret:stripe"));
+});
+
+test("coverage: scripts on the app's own CDN are read, other companies' scripts aren't", async () => {
+  const { fetcher, calls } = site({ "https://static.app.example/main.js": LEAK }, { page: '<script src="https://static.app.example/main.js"></script><script src="https://js.stripe.com/v3/"></script>' });
+  const r = await siteScan("app.example", { fetcher });
+  assert.ok(r.findings.some((f) => f.id === "secret:stripe"));
+  assert.ok(!calls.some((c) => c.includes("stripe.com")));
+});
+
+test("coverage: a check that stops early says so, and the verdict doesn't overclaim", async () => {
+  const files = { "/assets/index.js": Array.from({ length: 10 }, (_, i) => `import("./c${i}.js");`).join("") };
+  for (let i = 0; i < 10; i++) files[`/assets/c${i}.js`] = "1";
+  const { fetcher } = site(files, { headers: { "content-security-policy": "frame-ancestors 'none'" } });
+  const r = await siteScan("app.example", { fetcher, maxScripts: 4 });
+  const note = r.findings.find((f) => f.id === "coverage:partial");
+  assert.match(note.title, /7 of this app's scripts weren't read/);
+  assert.equal(r.scriptsUnread, 7);
+  assert.match(r.verdict, /wasn't read/);
+});
+
+test("coverage: when no code could be read there is no grade", async () => {
+  const { fetcher } = site({}, { page: '<script src="https://other-assets.net/app.js"></script>', headers: { "content-security-policy": "frame-ancestors 'none'" } });
+  const r = await siteScan("app.example", { fetcher });
+  assert.equal(r.grade, "?");
+  assert.equal(r.score, null);
+  assert.match(renderSite(r, null, { color: false }), /Not graded/);
+});
+
+test("grades: one critical is D at best, one high is C at best", async () => {
+  const crit = await siteScan("app.example", { fetcher: site({ "/assets/index.js": LEAK }, { headers: { "content-security-policy": "frame-ancestors 'none'" } }).fetcher });
+  assert.equal(crit.grade, "D");
+  assert.equal(SEVERITY.critical >= 41, true);
+  assert.equal(100 - SEVERITY.high < 75, true);
+});
+
+test("dead addresses: a builder's not-found page with status 200 isn't graded", async () => {
+  const { fetcher } = site({}, { page: "<html><title>Website Not Found - Bolt</title></html>" });
+  await assert.rejects(() => siteScan("app.example", { fetcher }), /\(404\)/);
+});
+
+test("non-pages: a file or API address gets a clear error", async () => {
+  const fetcher = async (url) => ({ status: 200, url, headers: new Headers({ "content-type": "application/pdf" }), text: async () => "%PDF" });
+  await assert.rejects(() => siteScan("app.example/a.pdf", { fetcher }), (e) => /isn't a web page/.test(explainError(e.message)));
+});
+
+test("errors: each failure gets words someone can act on", () => {
+  assert.match(explainError("could not load https://x.example/ (530)"), /Nothing answers/);
+  assert.match(explainError("could not load https://x.example/ (429)"), /turned the check away/);
+  assert.match(explainError("could not load https://x.example/ (404)"), /not found/);
+  assert.match(explainError("could not load https://x.example/ (502)"), /error of its own/);
+  assert.match(explainError("could not load https://x.example/ (fetch failed)"), /Couldn't reach/);
+});
+
+test("verdict: a good grade with an unchecked database says so, with a prompt for people with no terminal", async () => {
+  const script = `const u="${SB}",k="${anon}";`;
+  const r = await siteScan("app.example", { fetcher: site({ "/assets/index.js": script }, { headers: { "content-security-policy": "frame-ancestors 'none'" } }).fetcher });
+  assert.equal(r.grade, "A");
+  assert.match(r.verdict, /database still needs checking/);
+  assert.match(r.findings.find((f) => f.id === "db:skipped").checkPrompt, /Row Level Security/);
+});
+
+test("coverage: a script that won't load counts as unread, after one retry", async () => {
+  const tries = {};
+  const fetcher = async (url) => {
+    const path = new URL(url).pathname;
+    tries[path] = (tries[path] || 0) + 1;
+    const r = (s, body, type) => ({ status: s, url, headers: new Headers({ "content-type": type }), text: async () => body });
+    if (path === "/") return r(200, '<script src="/a.js"></script><script src="/flaky.js"></script><script src="/down.js"></script>', "text/html");
+    if (path === "/down.js") return r(503, "", "text/plain");
+    if (path === "/flaky.js") return tries[path] === 1 ? r(502, "", "text/plain") : r(200, LEAK, "application/javascript");
+    return r(200, "1", "application/javascript");
+  };
+  const r = await siteScan("app.example", { fetcher });
+  assert.equal(tries["/down.js"], 2);
+  assert.ok(r.findings.some((f) => f.id === "secret:stripe"), "the retry found the key");
+  assert.equal(r.scriptsUnread, 1);
+  assert.ok(r.findings.some((f) => f.id === "coverage:partial"));
 });

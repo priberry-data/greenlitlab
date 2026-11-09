@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { siteScan, compare, renderSite, allPrompts } from "../src/grade.mjs";
+import { siteScan, compare, renderSite, allPrompts, explainError } from "../src/grade.mjs";
 import { SEVERITY } from "../src/severity.mjs";
 import { loadLast, saveRun } from "../src/history.mjs";
 
@@ -67,7 +67,7 @@ if (opt.version) {
     result = await siteScan(target, { mine: opt.mine });
   } catch (e) {
     if (timer) (clearInterval(timer), process.stderr.write("\r\x1b[K"));
-    console.error(`greenlit: ${e.message}`);
+    console.error(`greenlit: ${explainError(e.message)}`);
     process.exit(1);
   }
   if (timer) (clearInterval(timer), process.stderr.write("\r\x1b[K"));

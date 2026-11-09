@@ -120,6 +120,37 @@ async function get(url, { timeout = 15000, headers = {}, method = "GET", body = 
   }
 }
 
+// What went wrong, in words a non-developer can act on. Shared by the web check and the CLI.
+export function explainError(message) {
+  const m = String(message);
+  const code = Number((m.match(/\((\d{3})\)$/) || [])[1]);
+  if (/look like a web address/.test(m)) return "That doesn't look like a web address. Try something like myapp.lovable.app.";
+  if (/isn't a web page/.test(m)) return "That address isn't a web page. Enter the address people open to use your app.";
+  if (code === 404) return "That address answered \"not found\". Check it's the live address of your app (open it in your browser first).";
+  if (code === 530) return "Nothing answers at that address. Check the spelling, and that the app is published.";
+  if (code === 401 || code === 403 || code === 429) return "That site turned the check away. It may be private, password-protected, or blocking automated visitors, so Greenlit can't grade it from here.";
+  if (code >= 500) return `That site had an error of its own (${code}). Open it in your browser to see if it's up, then try again.`;
+  if (/timed out/.test(m)) return "That site took too long to answer. Try again in a minute.";
+  return "Couldn't reach that site. Check the spelling, and that the app is published.";
+}
+
+// A script belongs to the app if it's on the same site (static.myapp.com for myapp.com) or on a hosting CDN.
+// Scripts on anyone else's site (Stripe, analytics) are that company's code, not the app's.
+const siteKey = (host) => {
+  const parts = host.toLowerCase().split(".");
+  const short = parts.length > 2 && parts.at(-1).length === 2 && /^(co|com|org|net|ac|gov|edu)$/.test(parts.at(-2));
+  return parts.slice(short ? -3 : -2).join(".");
+};
+const HOSTING_CDN = /(^|\.)(cloudfront\.net|azureedge\.net|b-cdn\.net|r2\.dev|fastly\.net|akamaized\.net|amazonaws\.com|storage\.googleapis\.com)$/i;
+
+// Paths to other scripts mentioned inside a script or page: imports of every form, and the lists of lazy-loaded
+// pages that Vite and Next.js keep ("assets/Page-abc.js", "static/chunks/abc.js"). This is where most of an app's code is.
+const SCRIPT_REF = /["'`]((?:\.{0,2}\/|assets\/|_next\/|static\/chunks\/)[\w@.~\/-]+\.m?js(?:\?[^"'`\s]*)?)["'`]/g;
+const resolveRef = (ref, from, origin) => (/^(assets|_next)\//.test(ref) ? safeUrl(ref, `${origin}/`) : ref.startsWith("static/chunks/") ? safeUrl(`/_next/${ref}`, origin) : safeUrl(ref, from));
+
+// Builders and hosts often answer an address with nothing on it with a normal-looking page and status 200.
+const DEAD_PAGE = /<title[^>]*>[^<]*(?:(?:website|site|page|project|app|application|deployment)\s+(?:was\s+|is\s+)?not\s+found|\b404\b)[^<]*<\/title>/i;
+
 // --- fix prompts ---------------------------------------------------------------------------------
 // Written for someone who can't read the code: what to do by hand first (revoking a key is something
 // no AI builder can do for you), then one prompt to paste into the builder's chat.
@@ -167,8 +198,12 @@ const P = {
   }),
   framing: () => ({
     first: null,
-    prompt: "Any other website can show my app inside a hidden frame and trick my users into clicking things (clickjacking). Add the response header `Content-Security-Policy: frame-ancestors 'self'` (or `X-Frame-Options: DENY`) in my host's header settings, redeploy, and confirm the header is there.",
+    prompt: "Any other website can show my app inside a hidden frame and trick my users into clicking things (clickjacking). Add the response header `Content-Security-Policy: frame-ancestors 'self'` (or `X-Frame-Options: DENY`) in my host's header settings, redeploy, and confirm the header is there. If this host doesn't let me set response headers, say so plainly instead of adding a meta tag, because a meta tag can't do this. Then tell me what my options are.",
   }),
+  dbCheck: (db) =>
+    db === "Supabase"
+      ? "Check my Supabase database and change nothing yet. For every table, tell me whether Row Level Security is on, and which policies let someone read or change rows without signing in, or read rows that aren't theirs. Do the same for my storage buckets. Also tell me whether anyone can sign up without confirming their email. End with a plain list of what is open to strangers, worst first."
+      : "Check my Firebase security rules and change nothing yet. For Firestore, Realtime Database and Storage, tell me which paths someone can read or change without signing in, or read when the data isn't theirs. End with a plain list of what is open to strangers, worst first.",
   sourceMaps: () => ({
     first: null,
     prompt: "My production build publishes source maps, so anyone can read my app's original source code. Turn them off for production builds only (for Vite: build.sourcemap = false in vite.config), rebuild and redeploy. Don't change anything else.",
@@ -180,7 +215,8 @@ const P = {
 };
 
 // --- the check -----------------------------------------------------------------------------------
-export async function siteScan(target, { mine = false, fetcher = fetch, maxScripts = 40, maxBytes = 8 * 1024 * 1024 } = {}) {
+export async function siteScan(target, { mine = false, fetcher = fetch, maxScripts = 400, maxBytes = 8 * 1024 * 1024, maxTotalBytes = 200 * 1024 * 1024, deadlineMs = 120000, scriptTimeoutMs = 15000 } = {}) {
+  const deadline = Date.now() + deadlineMs;
   const fetchOpts = (o = {}) => ({ max: maxBytes, ...o, fetcher });
   const url = safeUrl(/^https?:\/\//i.test(String(target).trim()) ? String(target).trim() : `https://${String(target).trim()}`);
   if (!url || !/^https?:$/.test(url.protocol) || !url.hostname.includes(".")) throw new Error(`"${target}" doesn't look like a web address`);
@@ -189,33 +225,76 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
 
   const page = await get(url.href, fetchOpts());
   if (!page.status || page.status >= 400) throw new Error(`could not load ${url.href} (${page.error || page.status})`);
-  const origin = new URL(page.url || url.href).origin;
+  const pageType = page.headers?.get("content-type") || "";
+  if (pageType && !/html/i.test(pageType)) throw new Error(`${url.href} isn't a web page`);
+  if (DEAD_PAGE.test(page.text)) throw new Error(`could not load ${url.href} (404)`);
+  const pageUrl = page.url || url.href;
+  const origin = new URL(pageUrl).origin;
+  const site = siteKey(new URL(origin).hostname);
   const builder = detectBuilder(new URL(origin).host, page.text);
-
-  // Every script the page loads from its own site, plus the scripts those import.
-  const srcs = new Set();
-  const collect = (html, base) => {
-    for (const m of html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)) safeUrl(m[1], base) && srcs.add(safeUrl(m[1], base).href);
-    for (const m of html.matchAll(/<link[^>]+href=["']([^"']+\.m?js)["']/gi)) safeUrl(m[1], base) && srcs.add(safeUrl(m[1], base).href);
+  const isOwn = (href) => {
+    const h = new URL(href).hostname;
+    return siteKey(h) === site || HOSTING_CDN.test(h);
   };
-  collect(page.text, origin);
+
+  // Every script that belongs to the app: the ones the page loads, then whatever those mention, until none are left.
+  const srcs = new Set();
+  const collect = (text, base) => {
+    for (const m of text.matchAll(SCRIPT_REF)) {
+      const u = resolveRef(m[1], base, origin);
+      if (u && /^https?:$/.test(u.protocol)) srcs.add(u.href);
+    }
+  };
+  for (const m of page.text.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)) safeUrl(m[1], pageUrl) && srcs.add(safeUrl(m[1], pageUrl).href);
+  for (const m of page.text.matchAll(/<link[^>]+href=["']([^"']+\.m?js(?:\?[^"']*)?)["']/gi)) safeUrl(m[1], pageUrl) && srcs.add(safeUrl(m[1], pageUrl).href);
+  collect(page.text, pageUrl);
+
   const bundles = [{ where: "the page itself", text: page.text }];
   const seen = new Set();
-  // Two rounds: the scripts the page names, then the scripts those import. Six at a time.
-  for (let pass = 0; pass < 2; pass++) {
-    const batch = [...srcs].filter((src) => !seen.has(src) && new URL(src).origin === origin).slice(0, Math.max(0, maxScripts - seen.size));
+  let total = page.text.length;
+  let stopped = false;
+  let cut = 0;
+  let fetched = 0;
+  const retried = new Set();
+  const failed = new Set();
+  for (;;) {
+    const waiting = [...srcs].filter((src) => !seen.has(src) && isOwn(src));
+    if (!waiting.length) break;
+    const room = maxScripts - fetched;
+    if (room <= 0 || total >= maxTotalBytes || Date.now() > deadline) {
+      stopped = true;
+      break;
+    }
+    // Six at a time.
+    const batch = waiting.slice(0, Math.min(6, room));
     for (const src of batch) seen.add(src);
-    for (let i = 0; i < batch.length; i += 6) {
-      const got = await Promise.all(batch.slice(i, i + 6).map((src) => get(src, fetchOpts()).then((r) => ({ src, r }))));
-      for (const { src, r } of got) {
-        // Many hosts answer a missing file with the home page; that isn't a script.
-        if (r.status !== 200 || /text\/html/i.test(r.headers?.get("content-type") || "")) continue;
-        bundles.push({ where: new URL(src).pathname, text: r.text, url: src });
-        for (const m of r.text.matchAll(/(?:import\(|from\s*)["'](\.{0,2}\/[^"']+\.m?js)["']/g)) safeUrl(m[1], src) && srcs.add(safeUrl(m[1], src).href);
+    fetched += batch.length;
+    const got = await Promise.all(batch.map((src) => get(src, fetchOpts({ timeout: scriptTimeoutMs })).then((r) => ({ src, r }))));
+    for (const { src, r } of got) {
+      // A file that wouldn't load isn't the same as a file that doesn't exist: try once more, then count it as unread.
+      if (r.status === 0 || r.status === 429 || r.status >= 500) {
+        if (retried.has(src)) failed.add(src);
+        else {
+          retried.add(src);
+          seen.delete(src);
+        }
+        continue;
       }
+      // Many hosts answer a missing file with the home page; that isn't a script.
+      if (r.status !== 200 || /text\/html/i.test(r.headers?.get("content-type") || "")) continue;
+      if (r.text.length >= maxBytes) cut++;
+      total += r.text.length;
+      bundles.push({ where: new URL(src).pathname, text: r.text, url: src });
+      collect(r.text, src);
     }
   }
+  const unread = [...srcs].filter((src) => !seen.has(src) && isOwn(src)).length + failed.size;
+  const scriptTags = [...page.text.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => safeUrl(m[1], pageUrl)).filter((u) => u && /^https?:$/.test(u.protocol));
+  const elsewhere = scriptTags.filter((u) => !isOwn(u.href)).length;
+  // The page has scripts, but all of them live on another site, so its real code was never read.
+  const noCodeRead = bundles.length === 1 && elsewhere > 0;
 
+  let mapTries = 0;
   let supabase = null;
   let firebase = null;
   const keysSeen = new Set();
@@ -256,7 +335,9 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     }
     const sm = b.url && b.text.match(/sourceMappingURL=([^\s'"]+\.map)/);
     const mapUrl = sm && safeUrl(sm[1], b.url)?.href;
-    if (mapUrl && safeUrl(mapUrl).origin === origin && !findings.some((f) => f.id === "sourcemaps")) {
+    // A few tries are enough: an app either publishes its maps or it doesn't.
+    if (mapUrl && isOwn(mapUrl) && mapTries < 3 && !findings.some((f) => f.id === "sourcemaps")) {
+      mapTries++;
       // Check what comes back: hosts that answer every missing file with the home page would look "public" otherwise.
       const r = await get(mapUrl, fetchOpts({ max: 4096 }));
       if (r.status === 200 && /^\s*\{[\s\S]*"(version|mappings|sources)"/.test(r.text))
@@ -266,7 +347,11 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
 
   const database = supabase?.url && supabase.anon ? "Supabase" : firebase?.project ? "Firebase" : null;
   if (database && !mine)
-    add({ id: "db:skipped", severity: "info", where: database, title: `Your ${database} database wasn't checked`, why: `This app uses ${database}. Greenlit can check which of its data anyone on the internet can read, but only on your own computer, for an app you own.`, fix: `Run \`npx greenlitlab ${url.host} --mine\` if this is your app.`, first: null, prompt: null });
+    add({ id: "db:skipped", severity: "info", where: database, title: `Your ${database} database wasn't checked`, why: `This app uses ${database}. Greenlit can check which of its data anyone on the internet can read, but only on your own computer, for an app you own.`, fix: `Run \`npx greenlitlab ${url.host} --mine\` if this is your app.`, first: null, prompt: null, checkPrompt: P.dbCheck(database) });
+  if (unread || cut)
+    add({ id: "coverage:partial", severity: "info", where: "your app's scripts", title: unread ? `${unread} of this app's scripts weren't read` : "Some of this app's scripts were too big to read to the end", why: `Greenlit read ${bundles.length - 1} scripts, but couldn't get through the rest in one check. A problem in those wouldn't show up here.`, fix: `Run \`npx greenlitlab ${url.host}\` on your computer, which reads them all.`, first: null, prompt: null });
+  if (noCodeRead)
+    add({ id: "coverage:none", severity: "info", where: "your app's scripts", title: "This app's code wasn't read", why: `All ${elsewhere} of its scripts load from other sites, and Greenlit can't tell which of them are yours. Only the page itself and its settings were checked.`, fix: "If your app loads its code from a site of its own, check that site's address too.", first: null, prompt: null });
 
   // Supabase: with the public anon key, which tables can anyone read?
   let tables = null;
@@ -371,17 +456,30 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
 
   const penalty = findings.reduce((a, f) => a + SEVERITY[f.severity], 0);
   const score = Math.max(0, 100 - penalty);
-  const grade = score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "F";
+  // With none of the app's code read and nothing serious seen, there's no honest grade to give.
+  const ungraded = noCodeRead && penalty < SEVERITY.high;
+  const grade = ungraded ? "?" : score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "F";
+  // A good grade says only what was looked at, so it can't be read as "the database is safe too".
+  const good = grade === "A" || grade === "B";
+  const incomplete = unread > 0 || cut > 0;
+  const verdict = ungraded
+    ? "Not graded: Greenlit couldn't read this app's code."
+    : good && database && !mine
+      ? `Nothing serious in the ${incomplete ? "code Greenlit read" : "code"}. Your database still needs checking.`
+      : good && incomplete
+        ? "Nothing serious in the code Greenlit read. Some of it wasn't read."
+        : VERDICT[grade];
   const order = ["critical", "high", "medium", "low", "info"];
   findings.sort((a, b) => order.indexOf(a.severity) - order.indexOf(b.severity));
   return {
     url: origin,
     builder,
-    score,
+    score: ungraded ? null : score,
     grade,
-    verdict: VERDICT[grade],
+    verdict,
     mine,
     scripts: bundles.length - 1,
+    scriptsUnread: unread,
     supabase: supabase ? { project: supabase.ref, checked: mine, readable: tables } : null,
     firebase: firebase ? { project: firebase.project, checked: mine, readable: firebaseOpen } : null,
     findings,
@@ -440,10 +538,10 @@ export function renderSite(r, change, { color = true, mine = r.mine } = {}) {
   const k = (code) => (s) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
   const red = k("31"), green = k("32"), yellow = k("33"), dim = k("2"), bold = k("1"), cyan = k("36");
   const col = { critical: red, high: red, medium: yellow, low: dim, info: dim };
-  const gcol = r.score >= 75 ? green : r.score >= 55 ? yellow : red;
+  const gcol = r.grade === "A" || r.grade === "B" ? green : r.grade === "C" || r.grade === "?" ? yellow : red;
   const L = [];
   L.push("", `${bold("Greenlit check")} · ${r.url}${r.builder ? ` · built with ${r.builder}` : ""} · ${r.scripts} scripts read${r.supabase ? " · Supabase" : ""}${r.firebase ? " · Firebase" : ""}`, "");
-  L.push(`  Grade ${gcol(bold(r.grade))}  ${gcol(`${r.score}/100`)}  ${r.verdict}`);
+  L.push(`  Grade ${gcol(bold(r.grade))}  ${r.score == null ? "" : `${gcol(`${r.score}/100`)}  `}${r.verdict}`);
   if (change) {
     const arrow = change.after.score > change.before.score ? green : change.after.score < change.before.score ? red : dim;
     L.push(`  ${arrow(`Was ${change.before.grade} (${change.before.score}) on ${change.since.slice(0, 10)}, now ${change.after.grade} (${change.after.score}).`)}`);
@@ -462,7 +560,13 @@ export function renderSite(r, change, { color = true, mine = r.mine } = {}) {
     if (f.prompt) {
       L.push(`             ${cyan(`Then paste this into ${r.pasteInto}:`)}`);
       L.push(wrap(f.prompt, 84, `             ${dim("│")} `));
-    } else L.push(wrap(`${green("Next:")} ${f.fix}`, 88, "             "));
+    } else {
+      L.push(wrap(`${green("Next:")} ${f.fix}`, 88, "             "));
+      if (f.checkPrompt) {
+        L.push(`             ${cyan(`Or paste this into ${r.pasteInto} to have it check:`)}`);
+        L.push(wrap(f.checkPrompt, 84, `             ${dim("│")} `));
+      }
+    }
     L.push("");
   }
   L.push(dim(`Read only what the site serves to every visitor${mine ? "; database checked with counts and names only, never data" : ""}.`));
