@@ -150,9 +150,10 @@ test("coverage: when no code could be read there is no grade", async () => {
   assert.match(renderSite(r, null, { color: false }), /Not graded/);
 });
 
-test("grades: one critical is D at best, one high is C at best", async () => {
+test("grades: one critical is an F, one high is C at best", async () => {
   const crit = await siteScan("app.example", { fetcher: site({ "/assets/index.js": LEAK }, { headers: { "content-security-policy": "frame-ancestors 'none'" } }).fetcher });
-  assert.equal(crit.grade, "D");
+  assert.equal(crit.grade, "F");
+  assert.ok(crit.score <= 39);
   assert.equal(SEVERITY.critical >= 41, true);
   assert.equal(100 - SEVERITY.high < 75, true);
 });
@@ -199,4 +200,82 @@ test("coverage: a script that won't load counts as unread, after one retry", asy
   assert.ok(r.findings.some((f) => f.id === "secret:stripe"), "the retry found the key");
   assert.equal(r.scriptsUnread, 1);
   assert.ok(r.findings.some((f) => f.id === "coverage:partial"));
+});
+
+// --- Phase 0 (10 November 2026): Supabase no longer lists tables for the public key ---
+// A project that refuses the table list, the way Supabase answers the public key since 2026.
+const modernSupabase = (tables, script, extra = {}) => {
+  const calls = [];
+  const fetcher = async (url, opts = {}) => {
+    calls.push({ url, method: opts.method || "GET" });
+    const r = (status, body, type = "application/json", headers = {}) => ({ status, url, headers: new Headers({ "content-type": type, ...headers }), text: async () => body });
+    if (url.startsWith(SB)) {
+      const path = url.slice(SB.length).split("?")[0];
+      if (path === "/rest/v1/") return r(401, '{"message":"Invalid API key","hint":"Only the `service_role` API key can be used for this endpoint."}');
+      if (path.startsWith("/rest/v1/")) {
+        const t = decodeURIComponent(path.slice(9));
+        if (!(t in tables)) return r(404, "");
+        return tables[t] === "closed" ? r(401, "") : r(tables[t] ? 206 : 200, "", "application/json", { "content-range": tables[t] ? `0-0/${tables[t]}` : "*/0" });
+      }
+      if (path in extra) return r(200, JSON.stringify(extra[path]));
+      return r(404, "{}");
+    }
+    const path = new URL(url).pathname;
+    if (path === "/assets/index.js") return r(200, script, "application/javascript");
+    return r(200, '<script type="module" src="/assets/index.js"></script>', "text/html", new URL(url).pathname === "/" ? { "content-security-policy": "frame-ancestors 'none'" } : {});
+  };
+  return { fetcher, calls };
+};
+const client = `const u="${SB}",k="${anon}";`;
+
+test("--mine: table names come from the app's code when Supabase refuses to list them", async () => {
+  const script = `${client}db.from("profiles").select();db.from('orders').select();Array.from("ghost");db.storage.from("kyc-docs").list();db.rpc("promote_user");`;
+  const { fetcher, calls } = modernSupabase({ profiles: 1234, orders: "closed" }, script, { "/storage/v1/object/list/kyc-docs": [{ name: "passport.pdf" }] });
+  const r = await siteScan("app.example", { fetcher, mine: true });
+  assert.ok(r.findings.some((f) => f.id === "supabase:table:profiles" && /1,234 rows/.test(f.title)));
+  assert.equal(r.supabase.tablesTested, 2, "profiles and orders exist; ghost and kyc-docs answered not found");
+  assert.equal(r.supabase.checked, true);
+  assert.ok(!r.findings.some((f) => f.id === "db:no-tables"));
+  assert.ok(r.findings.some((f) => f.id === "supabase:storage:kyc-docs"), "a bucket named in the code is checked too");
+  assert.deepEqual(r.supabase.functions, ["promote_user"]);
+  assert.ok(!calls.some((c) => c.url.includes("/rpc/")), "functions are listed, never called");
+  assert.ok(calls.filter((c) => c.url.includes("/rest/v1/") && !c.url.endsWith("/rest/v1/")).every((c) => c.method === "HEAD"));
+  assert.match(renderSite(r, null, { color: false }), /2 tables tested with the public key, 1 readable by anyone\. Only tables named in your app's code/);
+  assert.equal(r.supabase.tablesListed, false);
+});
+
+test("--mine: a check that tested no tables says so instead of reporting nothing open", async () => {
+  const { fetcher } = modernSupabase({}, client);
+  const r = await siteScan("app.example", { fetcher, mine: true });
+  assert.equal(r.supabase.checked, false);
+  assert.equal(r.supabase.tablesTested, 0);
+  assert.ok(r.findings.some((f) => f.id === "db:no-tables" && f.checkPrompt));
+  assert.match(r.verdict, /database tables weren't checked/);
+  assert.match(renderSite(r, null, { color: false }), /no tables were tested/);
+});
+
+test("Supabase address without its key: the database is reported as not checked", async () => {
+  const { fetcher } = modernSupabase({}, `const u="${SB}";`);
+  const r = await siteScan("app.example", { fetcher });
+  assert.ok(r.findings.some((f) => f.id === "db:not-found"));
+  assert.match(r.verdict, /weren't checked/);
+});
+
+test("grades: small things take 20 points at most, so headers alone never fail an app", async () => {
+  const maps = Object.fromEntries(Array.from({ length: 1 }, () => ["/x", ""]));
+  const { fetcher } = modernSupabase(Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`list${i}`, 5])), client + Array.from({ length: 12 }, (_, i) => `db.from("list${i}");`).join(""));
+  const r = await siteScan("app.example", { fetcher, mine: true });
+  assert.equal(r.findings.filter((f) => f.severity === "medium").length, 12);
+  assert.equal(r.score, 80);
+  assert.equal(r.grade, "B");
+  assert.ok(maps);
+});
+
+test("fairness: on a lovable.app address, frame protection is shown but costs nothing", async () => {
+  const fetcher = async (url) => ({ status: 200, url, headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (new URL(url).pathname === "/" ? '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'"><script src="/a.js"></script>' : "1") });
+  const hosted = await siteScan("myapp.lovable.app", { fetcher });
+  assert.equal(hosted.findings.find((f) => f.id === "framing").severity, "info");
+  assert.equal(hosted.score, 100);
+  const own = await siteScan("myapp.example", { fetcher });
+  assert.equal(own.findings.find((f) => f.id === "framing").severity, "low");
 });

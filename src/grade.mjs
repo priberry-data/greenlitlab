@@ -51,6 +51,11 @@ const FB_DB = /["'](https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:firebaseio\.com|fi
 const FB_KEY = /apiKey["']?\s*:\s*["'](AIza[0-9A-Za-z_-]{35})["']/;
 // Firestore can't list its collections without admin rights, so try the names apps use for people and money.
 const FIRESTORE_GUESSES = ["users", "profiles", "customers", "accounts", "orders", "payments", "messages", "chats", "leads", "contacts", "posts"];
+// Supabase stopped listing tables for the public key in 2026, so table names come from the app's own code:
+// supabase.from("orders") calls and /rest/v1/orders addresses. Names that aren't tables answer "not found" and are dropped.
+const TABLE_REF = /\.from\(\s*["'`]([A-Za-z_][A-Za-z0-9_]{1,62})["'`]\s*\)|\/rest\/v1\/([A-Za-z_][A-Za-z0-9_]{1,62})(?![A-Za-z0-9_])/g;
+const RPC_REF = /\.rpc\(\s*["'`]([A-Za-z_][A-Za-z0-9_]{1,62})["'`]|\/rest\/v1\/rpc\/([A-Za-z_][A-Za-z0-9_]{1,62})/g;
+const BUCKET_REF = /storage\s*\.from\(\s*["'`]([A-Za-z0-9_.-]{1,63})["'`]/g;
 const PERSONAL = /user|profile|customer|account|order|payment|message|chat|contact|lead|email|subscri|invoice/i;
 
 // Which app builder made this, so the fix prompt can say where to paste it.
@@ -355,21 +360,46 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
 
   // Supabase: with the public anon key, which tables can anyone read?
   let tables = null;
+  let tablesTested = 0;
+  let dbBlind = false;
+  let tablesListed = false;
+  // Database functions the app calls. Listed for the owner, never called: calling one runs it.
+  const functions = new Set();
+  const bucketsInCode = new Set();
+  if (supabase)
+    for (const b of bundles) {
+      for (const m of b.text.matchAll(RPC_REF)) functions.add(m[1] || m[2]);
+      for (const m of b.text.matchAll(BUCKET_REF)) bucketsInCode.add(m[1]);
+    }
+  // Signs of Supabase, but not both its address and its public key: nothing can be tested.
+  const supabasePartial = Boolean(supabase && !(supabase.url && supabase.anon) && !firebase?.project);
+  if (supabasePartial)
+    add({ id: "db:not-found", severity: "info", where: "Supabase", title: "This app seems to use Supabase, but its database wasn't checked", why: "Greenlit found signs of Supabase but not both its address and its public key in the code it read, so it couldn't test anything. The app may reach its database through its own server, which is the safer design, or the key may be in code that wasn't read.", fix: "Open Supabase → Advisors → Security Advisor: it lists every table and function that strangers can reach.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
   if (mine && supabase?.url && supabase.anon) {
     // The newer sb_publishable_ keys aren't JWTs and go in the apikey header only.
     const h = { apikey: supabase.anon, ...(supabase.anon.startsWith("eyJ") && { authorization: `Bearer ${supabase.anon}` }) };
+    const names = new Set();
+    // Older projects still answer this with the list of tables; newer ones refuse the public key.
     const api = await get(`${supabase.url}/rest/v1/`, fetchOpts({ headers: h }));
-    let names = [];
     try {
-      names = Object.keys(JSON.parse(api.text).paths || {}).map((p) => p.slice(1)).filter((p) => p && !p.startsWith("rpc/"));
+      for (const p of Object.keys(JSON.parse(api.text).paths || {})) if (p.slice(1) && !p.startsWith("/rpc/")) names.add(p.slice(1));
     } catch {}
+    tablesListed = names.size > 0;
+    for (const b of bundles) for (const m of b.text.matchAll(TABLE_REF)) (m[1] || m[2]) !== "rpc" && names.add(m[1] || m[2]);
     tables = [];
-    for (const t of names.slice(0, 60)) {
+    for (const t of [...names].slice(0, 80)) {
       // A HEAD request with count=exact returns how many rows are visible, and no rows.
       const r = await get(`${supabase.url}/rest/v1/${encodeURIComponent(t)}?select=*`, fetchOpts({ method: "HEAD", headers: { ...h, prefer: "count=exact", range: "0-0" } }));
+      // "Not found" means the name wasn't a table; no answer means it wasn't tested. Neither counts.
+      if (!r.status || r.status === 404 || r.status >= 500) continue;
+      tablesTested++;
       const n = Number((r.headers?.get("content-range") || "").split("/")[1]);
       if (r.status < 300 && n > 0) tables.push({ table: t, rows: n });
     }
+    // A check that tested no tables must say so, not report "nothing open".
+    dbBlind = tablesTested === 0;
+    if (dbBlind)
+      add({ id: "db:no-tables", severity: "info", where: "Supabase", title: "Your database tables weren't checked", why: "Greenlit couldn't find any of your table names in the code it read, and Supabase no longer lists them for the public key. So it couldn't test which tables strangers can read. Storage and sign-up settings were still checked.", fix: "Open Supabase → Advisors → Security Advisor: it lists every table that strangers can reach.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
     for (const { table, rows } of tables) {
       const personal = PERSONAL.test(table);
       const why = personal
@@ -404,8 +434,8 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
         add({ id: "supabase:open-signup", severity: "high", where: "Supabase Auth settings", title: "Anyone can sign up with any email, without confirming it", why: "Rules that only check \"is the user signed in?\" protect nothing: a stranger can make an account in seconds, even with someone else's email address.", fix: "Turn on email confirmation in Supabase Auth, and make every policy check who owns the row, not just that someone is signed in.", ...P.signup() });
     } catch {}
     // Storage: which common buckets list their files to anyone? Asks for one file name, never the file.
-    for (const bucket of ["avatars", "uploads", "files", "documents", "images", "attachments", "receipts", "invoices", "private"]) {
-      const r = await get(`${supabase.url}/storage/v1/object/list/${bucket}`, fetchOpts({ method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ prefix: "", limit: 1, offset: 0 }), max: 65536 }));
+    for (const bucket of [...new Set(["avatars", "uploads", "files", "documents", "images", "attachments", "receipts", "invoices", "private", ...bucketsInCode])].slice(0, 24)) {
+      const r = await get(`${supabase.url}/storage/v1/object/list/${encodeURIComponent(bucket)}`, fetchOpts({ method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ prefix: "", limit: 1, offset: 0 }), max: 65536 }));
       let n = 0;
       try {
         n = Array.isArray(JSON.parse(r.text)) ? JSON.parse(r.text).length : 0;
@@ -451,21 +481,34 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     add({ id: "csp", severity: "low", where: "response headers", title: "No Content-Security-Policy", why: "If an attacker gets a script into the page (through a comment, a profile field or a dependency), nothing stops it from sending your users' data out.", fix: "Add a Content-Security-Policy header in your host's settings.", ...P.csp([...thirdParty].slice(0, 6)) });
 
   const csp = page.headers?.get("content-security-policy") || "";
-  if (!page.headers?.get("x-frame-options") && !/frame-ancestors/i.test(csp))
-    add({ id: "framing", severity: "low", where: "response headers", title: "Other sites can put your app in a frame", why: "A malicious page can show your app inside an invisible frame and trick your users into clicking buttons they can't see (clickjacking).", fix: "Add the header Content-Security-Policy: frame-ancestors 'self' (or X-Frame-Options: DENY).", ...P.framing() });
+  // Lovable's own hosting sets the response headers, and this protection can't be added from inside an app
+  // (a meta tag can't do it). What the owner can't change is shown, and costs no points.
+  const hostSetsHeaders = /\.lovable\.app$/i.test(new URL(origin).hostname);
+  if (!page.headers?.get("x-frame-options") && !/frame-ancestors/i.test(csp)) {
+    if (hostSetsHeaders)
+      add({ id: "framing", severity: "info", where: "response headers", title: "Your host decides whether other sites can frame your app", why: "Other sites can show this app inside a frame, which can be used to trick people into clicks (clickjacking). On a lovable.app address the host sets these headers and we found no way for you to change them, so this costs you no points.", fix: "Nothing to do here. If you move to your own domain on a host that lets you set headers, add Content-Security-Policy: frame-ancestors 'self'.", first: null, prompt: null });
+    else
+      add({ id: "framing", severity: "low", where: "response headers", title: "Other sites can put your app in a frame", why: "A malicious page can show your app inside an invisible frame and trick your users into clicking buttons they can't see (clickjacking).", fix: "Add the header Content-Security-Policy: frame-ancestors 'self' (or X-Frame-Options: DENY).", ...P.framing() });
+  }
 
-  const penalty = findings.reduce((a, f) => a + SEVERITY[f.severity], 0);
-  const score = Math.max(0, 100 - penalty);
+  // Small things add up to 20 points at most, so missing headers alone can never fail an app.
+  // One critical problem is an F whatever else is right: it can't be averaged away.
+  const sum = (kinds) => findings.reduce((a, f) => a + (kinds.includes(f.severity) ? SEVERITY[f.severity] : 0), 0);
+  const penalty = sum(["critical", "high"]) + Math.min(20, sum(["medium", "low"]));
+  const blocker = findings.some((f) => f.severity === "critical");
+  const score = Math.min(Math.max(0, 100 - penalty), blocker ? 39 : 100);
   // With none of the app's code read and nothing serious seen, there's no honest grade to give.
   const ungraded = noCodeRead && penalty < SEVERITY.high;
-  const grade = ungraded ? "?" : score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "F";
+  const grade = ungraded ? "?" : blocker ? "F" : score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "F";
   // A good grade says only what was looked at, so it can't be read as "the database is safe too".
   const good = grade === "A" || grade === "B";
   const incomplete = unread > 0 || cut > 0;
   const verdict = ungraded
     ? "Not graded: Greenlit couldn't read this app's code."
-    : good && database && !mine
-      ? `Nothing serious in the ${incomplete ? "code Greenlit read" : "code"}. Your database still needs checking.`
+    : good && (dbBlind || supabasePartial)
+      ? `Nothing serious in the ${incomplete ? "code Greenlit read" : "code"}. Your database tables weren't checked.`
+      : good && database && !mine
+        ? `Nothing serious in the ${incomplete ? "code Greenlit read" : "code"}. Your database still needs checking.`
       : good && incomplete
         ? "Nothing serious in the code Greenlit read. Some of it wasn't read."
         : VERDICT[grade];
@@ -480,7 +523,7 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     mine,
     scripts: bundles.length - 1,
     scriptsUnread: unread,
-    supabase: supabase ? { project: supabase.ref, checked: mine, readable: tables } : null,
+    supabase: supabase ? { project: supabase.ref, checked: Boolean(mine && tables && !dbBlind), tablesTested, tablesListed, readable: tables, functions: [...functions].slice(0, 50) } : null,
     firebase: firebase ? { project: firebase.project, checked: mine, readable: firebaseOpen } : null,
     findings,
     pasteInto: builder || "your AI app builder or coding agent",
@@ -569,6 +612,8 @@ export function renderSite(r, change, { color = true, mine = r.mine } = {}) {
     }
     L.push("");
   }
+  if (r.supabase?.checked) L.push(dim(`Supabase: ${r.supabase.tablesTested} table${r.supabase.tablesTested === 1 ? "" : "s"} tested with the public key, ${r.supabase.readable.length} readable by anyone.${r.supabase.tablesListed ? "" : " Only tables named in your app's code could be tested; Supabase's Security Advisor lists them all."}`));
+  else if (mine && r.supabase) L.push(dim("Supabase: no tables were tested. See the note above."));
   L.push(dim(`Read only what the site serves to every visitor${mine ? "; database checked with counts and names only, never data" : ""}.`));
   if (n) {
     L.push(dim(`Fix the red items first, one prompt at a time. Copy one prompt: npx greenlitlab ${new URL(r.url).host}${mine ? " --mine" : ""} --prompt 1 | pbcopy  (or --prompt all for every fix in one)`));

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (10 November 2026)
+
+- Fixed: `--mine` was reporting nothing open when it had tested nothing. Supabase stopped listing a project's tables for the public key in 2026, and Greenlit relied on that list. It now takes table names from the app's own code, reports how many tables it tested, and says plainly when it could test none.
+- Storage buckets named in the app's code are checked too, not only the nine common names. Database functions the app calls are listed in the JSON result and never called.
+- An app that shows signs of Supabase without both its address and public key is reported as "database not checked" instead of nothing.
+- Grades: one critical problem is now an F whatever else is right. Medium and low findings together take 20 points at most, so missing headers alone can never fail an app.
+- Fairness: on a lovable.app address, missing frame protection is shown but costs no points, because the host sets those headers.
+
 ## 0.2.1 (9 November 2026)
 
 - Reads all of an app's code: lazy-loaded pages (Vite and Next.js chunk lists), every import form, chains of any depth, scripts with `?v=` addresses, and scripts on the app's own CDN. It used to stop after two rounds, so most code in larger apps went unread.
