@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 (10 November 2026)
+
+- A welcome screen: `npx greenlitlab` on its own, in a wide terminal, now shows a pixel-art signal on green and the four commands that matter. `--help` still prints the full reference, and pipes, CI, `NO_COLOR` and narrow windows get it too.
+
 ## 0.4.1 (10 November 2026)
 
 `scan`, after running it on real projects:

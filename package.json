@@ -1,6 +1,6 @@
 {
   "name": "greenlitlab",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Is your AI-built app safe to launch? A grade from A to F for apps built with Lovable, Bolt, v0, Replit or Emergent, with a fix prompt for every problem. Checks leaks, open data and launch basics.",
   "type": "module",
   "bin": {

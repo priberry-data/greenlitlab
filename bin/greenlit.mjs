@@ -54,7 +54,12 @@ try {
 if (opt.version) {
   console.log(VERSION);
 } else if (opt.help || !positionals[0]) {
-  console.log(HELP);
+  // On its own in a wide terminal, Greenlit says hello with its welcome screen; --help, pipes, CI,
+  // NO_COLOR and narrow windows get the full plain help.
+  const { welcome } = await import("../src/welcome.mjs");
+  const hello = opt.help ? "" : welcome({ version: VERSION });
+  if (hello) process.stdout.write(hello);
+  else console.log(HELP);
 } else if (positionals[0] === "mcp") {
   const { serve } = await import("../src/mcp.mjs");
   await serve({ version: VERSION });
