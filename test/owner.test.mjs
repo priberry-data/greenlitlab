@@ -322,3 +322,29 @@ test("scan: when protection is switched on by a statement Greenlit can't follow,
   assert.match(f[0].title, /couldn't see/);
   fs.rmSync(dir, { recursive: true });
 });
+
+test("scan: a rule or table that a later migration removed is not reported", () => {
+  const dir = project({
+    "package.json": "{}",
+    "supabase/migrations/20260621_chat.sql": [
+      "create table public.conversations (id uuid); alter table public.conversations enable row level security;",
+      "create table public.old_feed (id uuid);",
+      'create policy "conv_insert" on public.conversations for insert with check (true);',
+      'create policy "part_insert" on public.conversations for all using (true);',
+      'create policy "feed_read" on public.old_feed for select using (true);',
+      'create policy "still_open" on public.conversations for delete using (true);',
+    ].join("\n"),
+    "supabase/migrations/20261102_fix.sql": [
+      "drop policy if exists conv_insert on public.conversations;",
+      'drop policy if exists "part_insert" on "public"."conversations";',
+      "create policy part_insert on public.conversations for all using (auth.uid() = id);",
+      "drop table if exists public.old_feed;",
+    ].join("\n"),
+  });
+  assert.deepEqual(codeScan(dir).findings.map((f) => f.id).sort(), ["scan:destructive:supabase/migrations/20261102_fix.sql", "scan:policy-true:conversations:delete"]);
+  fs.rmSync(dir, { recursive: true });
+  // Dropped and made again open, in one file: the last word counts.
+  const again = project({ "package.json": "{}", "supabase/migrations/1.sql": "create table public.t (id int); alter table t enable row level security;\ncreate policy p on t for all using (true);\ndrop policy p on t;\ncreate policy p on t for all using (true);" });
+  assert.deepEqual(codeScan(again).findings.map((f) => f.id), ["scan:policy-true:t:all"]);
+  fs.rmSync(again, { recursive: true });
+});

@@ -9,6 +9,7 @@
 - Tables that everyone may read are gathered into one finding with the list, instead of one finding per table.
 - A policy that lets anyone add rows is a question (right for a form, a waitlist or a log), not a high finding. Changing and deleting still are.
 - "No lockfile" is only reported for a project that has dependencies.
+- Migrations are read in order, and a rule or table that a later migration removes (`drop policy`, `alter policy`, `drop table`) is no longer reported.
 
 ## 0.4.0 (10 November 2026)
 

@@ -44,7 +44,8 @@ const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 export function codeScan(dir = ".") {
   const root = path.resolve(dir);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`"${dir}" isn't a folder`);
-  const files = walk(root);
+  // In name order, which for migrations is the order they ran in: a later file can undo an earlier one.
+  const files = walk(root).sort();
   const rel = (f) => path.relative(root, f).split(path.sep).join("/");
   const findings = [];
   const add = (f) => findings.some((x) => x.id === f.id) || findings.push(f);
@@ -52,6 +53,8 @@ export function codeScan(dir = ".") {
   const protectedTables = new Set();
   const publicRead = { everyone: [], "every signed-in user": [] };
   let dynamicRls = false;
+  // Open policies still standing after every migration: a later "drop policy" or "drop table" removes one.
+  const openPolicies = new Map();
 
   for (const file of files) {
     const name = rel(file);
@@ -74,6 +77,8 @@ export function codeScan(dir = ".") {
 
     if (name.endsWith(".sql")) {
       const sql = noComments(text);
+      // What this file does, in the order it does it.
+      const events = [];
       // Protection switched on in a loop: foreach t in array['a','b'] loop execute format('alter table … enable row level security', t).
       // The names are inside quotes, so they are read from the file as written.
       for (const m of text.matchAll(/foreach\s+\w+\s+in\s+array\s+(?:array\s*)?\[([^\]]*)\]\s*loop([\s\S]*?)end\s+loop/gi))
@@ -84,11 +89,27 @@ export function codeScan(dir = ".") {
         // Only the public schema is reachable with the app's public key.
         if ((m[1] || "public").toLowerCase() !== "public") continue;
         const table = m[2].toLowerCase();
-        created.has(table) || created.set(table, `${name}:${lineOf(sql, m.index)}`);
+        const at = `${name}:${lineOf(sql, m.index)}`;
+        events.push({ i: m.index, run: () => created.has(table) || created.set(table, at) });
       }
       for (const m of sql.matchAll(new RegExp(String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${IDENT}\s+enable\s+row\s+level\s+security`, "gi"))) if ((m[1] || "public").toLowerCase() === "public") protectedTables.add(m[2].toLowerCase());
       // The policy's own name is skipped first: it is free text and often contains the word "on".
-      for (const m of sql.matchAll(new RegExp(String.raw`create\s+policy\s+(?:"[^"]*"|\w+)\s+on\s+${IDENT}([^;]*);`, "gi"))) {
+      const policyKey = (schema, table, policy) => `${(schema || "public").toLowerCase()}.${table.toLowerCase()}|${policy.replace(/"/g, "").toLowerCase()}`;
+      for (const m of sql.matchAll(new RegExp(String.raw`(?:drop|alter)\s+policy\s+(?:if\s+exists\s+)?("[^"]*"|\w+)\s+on\s+${IDENT}`, "gi"))) {
+        const key = policyKey(m[2], m[3], m[1]);
+        events.push({ i: m.index, run: () => openPolicies.delete(key) });
+      }
+      for (const m of sql.matchAll(new RegExp(String.raw`drop\s+table\s+(?:if\s+exists\s+)?${IDENT}`, "gi"))) {
+        const gone = `${(m[1] || "public").toLowerCase()}.${m[2].toLowerCase()}|`;
+        events.push({ i: m.index, run: () => {
+          if ((m[1] || "public").toLowerCase() === "public") created.delete(m[2].toLowerCase());
+          for (const k of [...openPolicies.keys()]) if (k.startsWith(gone)) openPolicies.delete(k);
+        } });
+      }
+      for (const full of sql.matchAll(new RegExp(String.raw`create\s+policy\s+("[^"]*"|\w+)\s+on\s+${IDENT}([^;]*);`, "gi"))) {
+        const m = [full[0], full[2], full[3], full[4]];
+        m.index = full.index;
+        const key = policyKey(full[2], full[3], full[1]);
         const rest = m[3];
         if (!/(?:using|with\s+check)\s*\(+\s*true\s*\)+/i.test(rest)) continue;
         // Policies in a private schema open nothing to the app's public key; storage is named in full.
@@ -104,13 +125,15 @@ export function codeScan(dir = ".") {
         const where = `${name}:${lineOf(sql, m.index)}`;
         // Reading a whole table is often meant (products, courses), so those are gathered into one question below.
         if (action === "select") {
-          publicRead[who].some((t) => t.table === table) || publicRead[who].push({ table, where });
+          events.push({ i: m.index, run: () => openPolicies.set(key, () => publicRead[who].some((t) => t.table === table) || publicRead[who].push({ table, where })) });
           continue;
         }
         // Adding rows is right for a contact form, a waitlist or a log. Changing and deleting rarely is.
         const addOnly = action === "insert";
-        add({ id: `scan:policy-true:${table}:${action}`, severity: addOnly ? "medium" : "high", where, title: `A rule lets ${who} ${action === "all" ? "read, change and delete" : addOnly ? "add" : action} rows in "${table}"`, why: `The policy's condition is simply "true", so Row Level Security is on but checks nothing for this action.${addOnly ? " That is right for a contact form, a waitlist or a log, and a problem if anything in the app trusts what is in this table." : ""}`, fix: "Compare auth.uid() with the row's owner column instead of using true.", first: null, prompt: `In my database, a Row Level Security policy on "${table}" for ${action} uses the condition true, so ${toAuthed ? "any signed-in user" : "anyone"} passes it. ${addOnly ? `Tell me first whether "${table}" is meant to take rows from ${toAuthed ? "any signed-in user" : "strangers"} (a form, a waitlist, a log). If it is, keep it but make sure the new row can't claim to belong to someone else (set the owner column from auth.uid(), never from the request) and can't be flooded. If it isn't, rewrite` : "Rewrite"} it so a user can only ${action === "all" ? "reach" : action} their own rows (auth.uid() = the owner column; add that column if it's missing). Write this as a new migration, don't edit old ones, and show me the SQL.` });
+        const finding = { id: `scan:policy-true:${table}:${action}`, severity: addOnly ? "medium" : "high", where, title: `A rule lets ${who} ${action === "all" ? "read, change and delete" : addOnly ? "add" : action} rows in "${table}"`, why: `The policy's condition is simply "true", so Row Level Security is on but checks nothing for this action.${addOnly ? " That is right for a contact form, a waitlist or a log, and a problem if anything in the app trusts what is in this table." : ""}`, fix: "Compare auth.uid() with the row's owner column instead of using true.", first: null, prompt: `In my database, a Row Level Security policy on "${table}" for ${action} uses the condition true, so ${toAuthed ? "any signed-in user" : "anyone"} passes it. ${addOnly ? `Tell me first whether "${table}" is meant to take rows from ${toAuthed ? "any signed-in user" : "strangers"} (a form, a waitlist, a log). If it is, keep it but make sure the new row can't claim to belong to someone else (set the owner column from auth.uid(), never from the request) and can't be flooded. If it isn't, rewrite` : "Rewrite"} it so a user can only ${action === "all" ? "reach" : action} their own rows (auth.uid() = the owner column; add that column if it's missing). Write this as a new migration, don't edit old ones, and show me the SQL.` };
+        events.push({ i: m.index, run: () => openPolicies.set(key, () => add(finding)) });
       }
+      for (const e of events.sort((a, b) => a.i - b.i)) e.run();
       if (/(^|\/)migrations\//.test(name)) {
         const d = sql.match(/^\s*(drop\s+table|truncate)\b[^;]*;/im);
         if (d) add({ id: `scan:destructive:${name}`, severity: "low", where: `${name}:${lineOf(sql, d.index)}`, title: "A migration deletes data", why: `It contains "${d[0].trim().slice(0, 60)}". Run against the live database, that data is gone unless you have a backup.`, fix: "Make sure a backup exists before this runs on the live database.", first: null, prompt: `My migration ${name} contains a statement that deletes data (${d[1].toLowerCase()}). Tell me exactly what would be lost if it runs on the live database, whether that is intended, and how to back up that data first. Change nothing.` });
@@ -142,6 +165,7 @@ export function codeScan(dir = ".") {
     if (env) add({ id: "scan:env-tracked", severity: "high", where: env, title: `Your ${env} file is saved in version control`, why: "Everyone with access to the repository, now or later, has every key in it. If the repository is public, so does the world.", fix: "Remove it from git, add it to .gitignore, and replace the keys it held.", first: "Replace every key in that file: once committed, a key stays in the history.", prompt: `My ${env} file is tracked by git. Remove it from version control without deleting my local copy (git rm --cached), add it to .gitignore, and give me an .env.example with the names only. Then list every key that was in it so I can replace each one.` });
   } catch {}
 
+  for (const emit of openPolicies.values()) emit();
   for (const [who, list] of Object.entries(publicRead)) {
     if (!list.length) continue;
     const names = list.map((t) => t.table);
