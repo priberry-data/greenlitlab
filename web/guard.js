@@ -67,3 +67,7 @@ export const servedHere = (request) => /^(greenlit\.priberry\.com|localhost|127\
 
 export const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra } });
+
+// A check of Greenlit's own address is a request from this site to itself, which skips the edge's http-to-https
+// redirect and would look like a missing one. For that one host the plain-http question isn't asked.
+export const selfProbe = (request, host) => (host === new URL(request.url).hostname ? { httpProbe: async () => ({ status: 0 }) } : {});

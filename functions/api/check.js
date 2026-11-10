@@ -2,7 +2,7 @@
 // to every visitor, the same as `npx greenlitlab <url>` without --mine. Database checks never run here,
 // because we can't know the person owns the app.
 import { siteScan, explainError } from "../../src/grade.mjs";
-import { publicTarget, allow, bump, cacheGet, cachePut, servedHere, json } from "../../web/guard.js";
+import { selfProbe, publicTarget, allow, bump, cacheGet, cachePut, servedHere, json } from "../../web/guard.js";
 
 // Enough to fix and re-check all afternoon, even when a whole office or mobile network shares one address.
 const PER_HOUR = 30;
@@ -35,7 +35,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   let result;
   try {
     // Smaller limits than the CLI: one web request may make only about 50 fetches on Cloudflare's free plan, and the launch checks need a few of them.
-    result = await siteScan(t.url, { mine: false, maxScripts: 36, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 12 * 1024 * 1024, deadlineMs: 25000, scriptTimeoutMs: 6000 });
+    result = await siteScan(t.url, { mine: false, maxScripts: 36, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 12 * 1024 * 1024, deadlineMs: 25000, scriptTimeoutMs: 6000, ...selfProbe(request, new URL(t.url).host) });
   } catch (e) {
     const message = String(e.message || e);
     // Counted by kind and day, with no address, so we can see when people are hitting a wall.

@@ -3,7 +3,7 @@
 //   step "publish" -> Greenlit checks the live app, finds the tag, and saves the grade, date and finding titles
 // Nothing is published for an app whose page doesn't carry the tag.
 import { siteScan, explainError } from "../../src/grade.mjs";
-import { publicTarget, allow, servedHere, json } from "../../web/guard.js";
+import { selfProbe, publicTarget, allow, servedHere, json } from "../../web/guard.js";
 import { toReport, claimTag, hasClaim, cleanHost } from "../../web/report.js";
 
 export async function onRequestPost({ request, env }) {
@@ -30,7 +30,7 @@ export async function onRequestPost({ request, env }) {
 
   let result;
   try {
-    result = await siteScan(`https://${host}/`, { mine: false, maxScripts: 36, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 12 * 1024 * 1024, deadlineMs: 25000, scriptTimeoutMs: 6000, wantPage: true });
+    result = await siteScan(`https://${host}/`, { mine: false, maxScripts: 36, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 12 * 1024 * 1024, deadlineMs: 25000, scriptTimeoutMs: 6000, ...selfProbe(request, host), wantPage: true });
   } catch (e) {
     return json({ error: explainError(String(e.message || e)) }, 422);
   }
