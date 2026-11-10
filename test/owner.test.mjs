@@ -19,7 +19,7 @@ const project = (files) => {
 
 test("scan: the launch mistakes that live in the project's files are found, by name and line", () => {
   const dir = project({
-    "package.json": "{}",
+    "package.json": '{"dependencies":{"react":"^19.0.0"}}',
     "supabase/migrations/001.sql": 'create table public.profiles (id uuid);\ncreate table orders (id bigint);\nalter table public.orders enable row level security;\ncreate policy "all" on public.orders for all using (true) with check (true);\ncreate policy "read" on products for select to authenticated using (true);\ncreate policy "own" on public.orders for select using (auth.uid() = user_id);\ndrop table old_stuff;\n',
     "supabase/config.toml": "[functions.ai-chat]\nverify_jwt = false\n[functions.ok]\nverify_jwt = true\n",
     "supabase/functions/stripe-webhook/index.ts": 'import Stripe from "stripe";\nexport default async (req) => grant(await req.json());\n',
@@ -29,10 +29,10 @@ test("scan: the launch mistakes that live in the project's files are found, by n
   });
   const r = codeScan(dir);
   const ids = r.findings.map((f) => f.id);
-  for (const id of ["scan:public-secret:VITE_STRIPE_SECRET_KEY", "scan:verify-jwt:ai-chat", "scan:policy-true:orders:all", "scan:policy-true:products:select", "scan:no-rls:profiles", "scan:agent-db:.mcp.json", "scan:no-lockfile"]) assert.ok(ids.includes(id), id);
+  for (const id of ["scan:public-secret:VITE_STRIPE_SECRET_KEY", "scan:verify-jwt:ai-chat", "scan:policy-true:orders:all", "scan:public-read:signed-in", "scan:no-rls:profiles", "scan:agent-db:.mcp.json", "scan:no-lockfile"]) assert.ok(ids.includes(id), id);
   assert.ok(ids.some((id) => id.startsWith("scan:webhook:")) && ids.some((id) => id.startsWith("scan:destructive:")));
   assert.ok(!ids.includes("scan:no-rls:orders") && !ids.includes("scan:verify-jwt:ok") && !ids.includes("scan:policy-true:t:all"), "protected tables, checked functions and dependencies are left alone");
-  assert.equal(r.findings.find((f) => f.id === "scan:policy-true:products:select").severity, "medium", "a public read is a question, not an alarm");
+  assert.equal(r.findings.find((f) => f.id === "scan:public-read:signed-in").severity, "medium", "a public read is a question, not an alarm");
   assert.equal(r.findings[0].severity, "critical");
   assert.ok(!JSON.stringify(r).includes("sk_value_that_must_not_appear"), "values in .env files are never read out");
   assert.ok(r.findings.every((f) => f.prompt.length > 80));
@@ -280,10 +280,45 @@ test("scan: text in quotes is not SQL, and a paid service's key behind a public 
     'create policy "q" on private.audit for all using (true);',
     'create policy "r" on storage.objects for select using (true);',
   ].join("\n"), "src/ai.ts": "const k = import.meta.env.VITE_OPENAI_API_KEY; const m = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;" });
-  assert.deepEqual(codeScan(dir).findings.map((f) => f.id).sort(), ["scan:no-rls:logs", "scan:policy-true:notes:all", "scan:policy-true:storage.objects:select", "scan:public-secret:VITE_OPENAI_API_KEY"]);
+  assert.deepEqual(codeScan(dir).findings.map((f) => f.id).sort(), ["scan:no-rls:logs", "scan:policy-true:notes:all", "scan:public-read:everyone", "scan:public-secret:VITE_OPENAI_API_KEY"]);
   fs.rmSync(dir, { recursive: true });
   // An apostrophe in a policy's name must not swallow the statements after it.
   const apostrophe = project({ "package.json": "{}", "package-lock.json": "{}", "supabase/migrations/1.sql": `create table a(id int); create policy "Users can't see others" on a for select using (auth.uid() = id); alter table a enable row level security; comment on table a is 'ok'; create policy "It's open" on a for all using (true);` });
   assert.deepEqual(codeScan(apostrophe).findings.map((f) => f.id), ["scan:policy-true:a:all"]);
   fs.rmSync(apostrophe, { recursive: true });
+});
+
+// --- found by running the scan on real projects (10 November 2026) ---
+test("scan: protection switched on in a loop is seen; test files, agents' copies and dependency-free packages are left alone", () => {
+  const dir = project({
+    "package.json": '{"name":"x"}',
+    "supabase/migrations/1_payroll.sql": [
+      "create table if not exists public.pay_components (id uuid);",
+      "create table if not exists public.employee_salary (id uuid);",
+      "do $$ declare t text; begin",
+      "  foreach t in array array['pay_components', 'employee_salary'] loop",
+      "    execute format('alter table public.%I enable row level security', t);",
+      "  end loop; end $$;",
+      'create policy "log_insert" on public.pay_components for insert to anon, authenticated with check (true);',
+      'create policy "a" on public.courses for select using (true);',
+      'create policy "b" on public.badges for select using (true);',
+    ].join("\n"),
+    "src/lib/__tests__/scanner.test.ts": "expect(find('VITE_OOPS_SECRET')).toBe(true);",
+    "src/lib/scanner.spec.ts": "const x = 'VITE_OTHER_SECRET';",
+    ".claude/worktrees/agent-1/supabase/migrations/1.sql": "create table public.copy_only (id int); drop table copy_only;",
+  });
+  const r = codeScan(dir);
+  assert.deepEqual(r.findings.map((f) => `${f.id}:${f.severity}`).sort(), ["scan:policy-true:pay_components:insert:medium", "scan:public-read:everyone:medium"]);
+  const read = r.findings.find((f) => f.id === "scan:public-read:everyone");
+  assert.match(read.title, /2 tables can be read in full by everyone/);
+  assert.match(read.why, /courses, badges/);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("scan: when protection is switched on by a statement Greenlit can't follow, an unmatched table is a question, not an alarm", () => {
+  const dir = project({ "package.json": "{}", "supabase/migrations/1.sql": "create table public.notes (id int);\ndo $$ declare r record; begin for r in select tablename from pg_tables where schemaname = 'public' loop execute format('alter table public.%I enable row level security', r.tablename); end loop; end $$;" });
+  const f = codeScan(dir).findings;
+  assert.deepEqual(f.map((x) => `${x.id}:${x.severity}`), ["scan:no-rls:notes:medium"]);
+  assert.match(f[0].title, /couldn't see/);
+  fs.rmSync(dir, { recursive: true });
 });

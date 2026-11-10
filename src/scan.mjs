@@ -5,7 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-const SKIP = new Set(["node_modules", ".git", "dist", "build", ".next", ".vercel", ".netlify", ".wrangler", "coverage", ".turbo", ".cache", "vendor", "__pycache__", ".venv"]);
+// Build output, dependencies, agents' working copies, and tests (whose made-up secrets and tables aren't the app's).
+const SKIP = new Set(["node_modules", ".claude", "worktrees", "__tests__", "__mocks__", "__fixtures__", "fixtures", "test", "tests", "e2e", "cypress", ".git", "dist", "build", ".next", ".vercel", ".netlify", ".wrangler", "coverage", ".turbo", ".cache", "vendor", "__pycache__", ".venv"]);
 const TEXT = /\.(sql|toml|json|js|jsx|ts|tsx|mjs|cjs|py|vue|svelte)$|(^|\/)\.env[^/]*$/;
 const PUBLIC_PREFIX = "(?:VITE_|NEXT_PUBLIC_|REACT_APP_|EXPO_PUBLIC_|PUBLIC_|NUXT_PUBLIC_)";
 // The name must END in the secret word (or _KEY/_TOKEN after it): VITE_STRIPE_SECRET_KEY is a secret,
@@ -49,6 +50,8 @@ export function codeScan(dir = ".") {
   const add = (f) => findings.some((x) => x.id === f.id) || findings.push(f);
   const created = new Map(); // table -> where it was created
   const protectedTables = new Set();
+  const publicRead = { everyone: [], "every signed-in user": [] };
+  let dynamicRls = false;
 
   for (const file of files) {
     const name = rel(file);
@@ -59,6 +62,7 @@ export function codeScan(dir = ".") {
     } catch {
       continue;
     }
+    if (/\.(test|spec)\.[a-z]+$/i.test(name)) continue;
     const isEnv = /(^|\/)\.env[^/]*$/.test(name);
 
     // Names only: a secret behind a public prefix is copied into the code every visitor downloads.
@@ -70,6 +74,12 @@ export function codeScan(dir = ".") {
 
     if (name.endsWith(".sql")) {
       const sql = noComments(text);
+      // Protection switched on in a loop: foreach t in array['a','b'] loop execute format('alter table … enable row level security', t).
+      // The names are inside quotes, so they are read from the file as written.
+      for (const m of text.matchAll(/foreach\s+\w+\s+in\s+array\s+(?:array\s*)?\[([^\]]*)\]\s*loop([\s\S]*?)end\s+loop/gi))
+        if (/enable\s+row\s+level\s+security/i.test(m[2])) for (const n of m[1].matchAll(/'([\w.]+)'/g)) protectedTables.add(n[1].replace(/^public\./i, "").toLowerCase());
+      // Any other statement built at run time that turns it on: the tables it covers can't be known from the file.
+      if (/execute\b[\s\S]{0,300}?enable\s+row\s+level\s+security/i.test(text)) dynamicRls = true;
       for (const m of sql.matchAll(new RegExp(String.raw`create\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?${IDENT}`, "gi"))) {
         // Only the public schema is reachable with the app's public key.
         if ((m[1] || "public").toLowerCase() !== "public") continue;
@@ -90,8 +100,16 @@ export function codeScan(dir = ".") {
         const table = schema === "public" ? m[2].toLowerCase() : `${schema}.${m[2].toLowerCase()}`;
         const action = (rest.match(/\bfor\s+(select|insert|update|delete|all)\b/i) || [, "all"])[1].toLowerCase();
         const toAuthed = /authenticated/.test(roles) && !/anon|public/.test(roles);
-        const readOnly = action === "select";
-        add({ id: `scan:policy-true:${table}:${action}`, severity: readOnly ? "medium" : "high", where: `${name}:${lineOf(sql, m.index)}`, title: readOnly ? `A rule lets ${toAuthed ? "every signed-in user" : "everyone"} read all of "${table}"` : `A rule lets ${toAuthed ? "every signed-in user" : "everyone"} ${action === "all" ? "read, change and delete" : action} rows in "${table}"`, why: `The policy's condition is simply "true", so Row Level Security is on but checks nothing for this action.${readOnly ? " That is fine for a public list such as products, and a leak for anything about people." : ""}`, fix: "Compare auth.uid() with the row's owner column instead of using true.", first: null, prompt: `In my database, a Row Level Security policy on "${table}" for ${action} uses the condition true, so ${toAuthed ? "any signed-in user" : "anyone"} passes it. Rewrite it so a user can only ${action === "all" ? "reach" : action} their own rows (auth.uid() = the owner column; add that column if it's missing). If "${table}" really is meant to be public to read, keep a read-only policy and make insert, update and delete owner-only. Write this as a new migration, don't edit old ones, and show me the SQL.` });
+        const who = toAuthed ? "every signed-in user" : "everyone";
+        const where = `${name}:${lineOf(sql, m.index)}`;
+        // Reading a whole table is often meant (products, courses), so those are gathered into one question below.
+        if (action === "select") {
+          publicRead[who].some((t) => t.table === table) || publicRead[who].push({ table, where });
+          continue;
+        }
+        // Adding rows is right for a contact form, a waitlist or a log. Changing and deleting rarely is.
+        const addOnly = action === "insert";
+        add({ id: `scan:policy-true:${table}:${action}`, severity: addOnly ? "medium" : "high", where, title: `A rule lets ${who} ${action === "all" ? "read, change and delete" : addOnly ? "add" : action} rows in "${table}"`, why: `The policy's condition is simply "true", so Row Level Security is on but checks nothing for this action.${addOnly ? " That is right for a contact form, a waitlist or a log, and a problem if anything in the app trusts what is in this table." : ""}`, fix: "Compare auth.uid() with the row's owner column instead of using true.", first: null, prompt: `In my database, a Row Level Security policy on "${table}" for ${action} uses the condition true, so ${toAuthed ? "any signed-in user" : "anyone"} passes it. ${addOnly ? `Tell me first whether "${table}" is meant to take rows from ${toAuthed ? "any signed-in user" : "strangers"} (a form, a waitlist, a log). If it is, keep it but make sure the new row can't claim to belong to someone else (set the owner column from auth.uid(), never from the request) and can't be flooded. If it isn't, rewrite` : "Rewrite"} it so a user can only ${action === "all" ? "reach" : action} their own rows (auth.uid() = the owner column; add that column if it's missing). Write this as a new migration, don't edit old ones, and show me the SQL.` });
       }
       if (/(^|\/)migrations\//.test(name)) {
         const d = sql.match(/^\s*(drop\s+table|truncate)\b[^;]*;/im);
@@ -113,7 +131,9 @@ export function codeScan(dir = ".") {
 
   if (files.some((f) => /(^|\/)supabase\//.test(rel(f))))
     for (const [table, where] of created)
-      if (!protectedTables.has(table))
+      if (!protectedTables.has(table) && dynamicRls)
+        add({ id: `scan:no-rls:${table}`, severity: "medium", where, title: `Greenlit couldn't see Row Level Security being turned on for "${table}"`, why: "Your migrations switch it on for some tables with a statement built while it runs, and Greenlit can't tell which tables that covers. This one may be protected.", fix: "Check it in Supabase → Advisors → Security Advisor, or run npx greenlitlab <your app> --mine.", first: null, prompt: `Tell me whether Row Level Security is enabled on the table "${table}" in my database, and which statement enables it. Change nothing.` });
+      else if (!protectedTables.has(table))
         add({ id: `scan:no-rls:${table}`, severity: "high", where, title: `The table "${table}" is created without Row Level Security`, why: "No migration turns Row Level Security on for it. If the app's public key can reach the table, every row is readable. (If you turned it on in the dashboard instead, the live database may be fine: check with npx greenlitlab <your app> --mine.)", fix: `Add: alter table public.${table} enable row level security; plus a policy for the owner.`, first: null, prompt: `My migrations create the table "${table}" but never enable Row Level Security on it. Write a new migration that enables it and adds policies so a signed-in user reaches only their own rows (auth.uid() = the owner column; add one if needed). If the table is meant to be public to read, say so and add a read-only policy. Show me the SQL.` });
 
   try {
@@ -122,7 +142,19 @@ export function codeScan(dir = ".") {
     if (env) add({ id: "scan:env-tracked", severity: "high", where: env, title: `Your ${env} file is saved in version control`, why: "Everyone with access to the repository, now or later, has every key in it. If the repository is public, so does the world.", fix: "Remove it from git, add it to .gitignore, and replace the keys it held.", first: "Replace every key in that file: once committed, a key stays in the history.", prompt: `My ${env} file is tracked by git. Remove it from version control without deleting my local copy (git rm --cached), add it to .gitignore, and give me an .env.example with the names only. Then list every key that was in it so I can replace each one.` });
   } catch {}
 
-  if (fs.existsSync(path.join(root, "package.json")) && !["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock"].some((f) => fs.existsSync(path.join(root, f))))
+  for (const [who, list] of Object.entries(publicRead)) {
+    if (!list.length) continue;
+    const names = list.map((t) => t.table);
+    add({ id: `scan:public-read:${who === "everyone" ? "everyone" : "signed-in"}`, severity: "medium", where: list[0].where, title: `${list.length} table${list.length > 1 ? "s" : ""} can be read in full by ${who}`, why: `${names.slice(0, 15).join(", ")}${names.length > 15 ? ` and ${names.length - 15} more` : ""}. Each has a policy whose condition is simply "true". That is fine for a public list such as products or courses, and a leak for anything about people.`, fix: "Go through the list: keep the ones that are meant to be public, and limit the rest to the row's owner.", first: null, prompt: `These tables in my database have a read policy with the condition true, so ${who === "everyone" ? "anyone on the internet" : "any signed-in user"} can read every row: ${names.join(", ")}. Go through them one by one and tell me, for each, whether it holds anything about a specific person (names, emails, messages, payments, activity). Change nothing yet. Then list the ones you would restrict to the row's owner, and wait for my OK.` });
+  }
+
+  // A lockfile only matters when there is something to lock.
+  let hasDeps = false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    hasDeps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).length > 0;
+  } catch {}
+  if (hasDeps && !["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock"].some((f) => fs.existsSync(path.join(root, f))))
     add({ id: "scan:no-lockfile", severity: "low", where: "package.json", title: "No lockfile", why: "Without a lockfile every build may install different versions of your dependencies, so the app you tested isn't the app you ship.", fix: "Commit the lockfile your package manager creates.", first: null, prompt: "My project has no lockfile. Run the install for the package manager this project uses, commit the lockfile it creates, and make the build use it." });
 
   const order = ["critical", "high", "medium", "low", "info"];

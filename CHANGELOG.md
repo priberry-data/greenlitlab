@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 (10 November 2026)
+
+`scan`, after running it on real projects:
+
+- Row Level Security switched on in a loop (`foreach t in array[…] loop execute format('alter table … enable row level security', t)`) is now seen. Where it is switched on by a statement Greenlit can't follow, an unmatched table is a question ("couldn't see"), not an alarm.
+- Test files, test folders and agents' working copies (`.claude`, `worktrees`) are no longer read: their made-up secrets and tables aren't the app's.
+- Tables that everyone may read are gathered into one finding with the list, instead of one finding per table.
+- A policy that lets anyone add rows is a question (right for a form, a waitlist or a log), not a high finding. Changing and deleting still are.
+- "No lockfile" is only reported for a project that has dependencies.
+
 ## 0.4.0 (10 November 2026)
 
 Greenlit now checks launch readiness, not only leaks. Only things it confirmed move the grade; what it couldn't see is said, and what only you know is asked.

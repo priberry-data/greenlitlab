@@ -5,12 +5,12 @@
   "description": "Grade apps built with Lovable, Bolt, v0 or Replit A to F, with a fix prompt for every problem.",
   "websiteUrl": "https://greenlit.priberry.com",
   "repository": { "url": "https://github.com/priberry-data/greenlitlab", "source": "github" },
-  "version": "0.4.0",
+  "version": "0.4.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "greenlitlab",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "transport": { "type": "stdio" },
       "packageArguments": [{ "type": "positional", "value": "mcp" }]
     }
