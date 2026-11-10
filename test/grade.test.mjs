@@ -12,12 +12,15 @@ function fakeSite({ serviceRole = false } = {}) {
   const calls = [];
   const res = (status, text = "", headers = {}) => ({ status, url: undefined, headers: new Headers(headers), text: async () => text });
   const fetcher = async (url, opts) => {
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     calls.push({ url, method: opts.method, headers: opts.headers });
     if (url === "https://app.example/") return { ...res(200, '<script type="module" src="/assets/index.js"></script>'), url };
     if (url === "https://app.example/assets/index.js")
       return res(200, `const s="${SB}",k="${anon}";const stripe="sk_live_${"a".repeat(24)}";${serviceRole ? `const admin="${jwt({ iss: "supabase", role: "service_role" })}";` : ""}\n//# sourceMappingURL=index.js.map`);
     if (url === "https://app.example/assets/index.js.map") return res(200, JSON.stringify({ version: 3, sources: ["src/App.tsx"], mappings: "AAAA" }));
     if (url === `${SB}/rest/v1/`) return res(200, JSON.stringify({ paths: { "/": {}, "/profiles": {}, "/posts": {}, "/rpc/do_thing": {} } }));
+    // Asked whether a column exists: this table has an email column and none of the others.
+    if (url.startsWith(`${SB}/rest/v1/profiles?select=`) && !/select=(\*|email)$/.test(url)) return res(400);
     if (url.startsWith(`${SB}/rest/v1/profiles`)) return res(206, "", { "content-range": "0-0/1234" });
     if (url.startsWith(`${SB}/rest/v1/posts`)) return res(200, "", { "content-range": "*/0" });
     return res(404);
@@ -42,11 +45,11 @@ test("site --mine: counts readable rows with HEAD requests and never asks for ro
   const r = await siteScan("https://app.example", { fetcher, mine: true });
   const open = r.findings.filter((f) => /Anyone on the internet can read/.test(f.title));
   assert.equal(open.length, 1);
-  assert.match(open[0].title, /1,234 rows of "profiles"/);
+  assert.match(open[0].title, /1,234 rows of "profiles", including email/);
   assert.equal(open[0].severity, "critical", "a table of people is critical");
   const tableCalls = calls.filter((c) => /\/rest\/v1\/\w/.test(c.url));
-  assert.ok(tableCalls.length === 2 && tableCalls.every((c) => c.method === "HEAD"));
-  assert.deepEqual(r.supabase.readable, [{ table: "profiles", rows: 1234 }]);
+  assert.ok(tableCalls.filter((c) => c.url.endsWith("select=*")).length === 2 && tableCalls.every((c) => c.method === "HEAD"), "rows are counted and columns are asked about with HEAD only");
+  assert.deepEqual(r.supabase.readable, [{ table: "profiles", rows: 1234, sensitive: ["email"] }]);
 });
 
 import fs from "node:fs";
@@ -58,7 +61,7 @@ import { saveRun, loadLast } from "../src/history.mjs";
 test("site: every finding a person can fix has a paste-in prompt, and the key never appears in it", async () => {
   const { fetcher } = fakeSite({ serviceRole: true });
   const r = await siteScan("app.example", { fetcher, mine: true });
-  for (const f of r.findings.filter((f) => f.id !== "db:skipped")) {
+  for (const f of r.findings.filter((f) => f.severity !== "info")) {
     assert.ok(f.prompt && f.prompt.length > 80, `${f.id} has a prompt`);
     assert.ok(!f.prompt.includes("sk_live_"), "the leaked key is never repeated in the prompt");
   }
@@ -84,6 +87,7 @@ test("site --mine: an open Firebase database is found by names only, never data"
   const calls = [];
   const res = (status, text = "") => ({ status, headers: new Headers(), text: async () => text });
   const fetcher = async (url, opts) => {
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     calls.push(url);
     if (url === "https://fb.example/") return { ...res(200, '<script src="/main.js"></script>'), url };
     if (url === "https://fb.example/main.js") return res(200, `initializeApp({apiKey:"AIza${"b".repeat(35)}",authDomain:"demo-app.firebaseapp.com",databaseURL:"https://demo-app-default-rtdb.firebaseio.com",projectId:"demo-app"}) // firebase`);
@@ -124,6 +128,7 @@ test("site: a re-check shows what got fixed, and history keeps no keys", async (
 function spaHost({ script = 'console.log(1)\n//# sourceMappingURL=index.js.map', html = '<script type="module" src="/assets/index.js"></script>' } = {}) {
   const page = (u) => ({ status: 200, url: u, headers: new Headers({ "content-type": "text/html" }), text: async () => html });
   return async (url) => {
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     if (url === "https://spa.example/") return page(url);
     if (url === "https://spa.example/assets/index.js") return { status: 200, url, headers: new Headers({ "content-type": "application/javascript" }), text: async () => script };
     return page(url); // the SPA fallback: every other path is the home page, with 200

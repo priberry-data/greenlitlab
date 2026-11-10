@@ -14,6 +14,7 @@ function host({ script = "", files = {}, headers = {}, supabase = {} } = {}) {
   const html = '<script type="module" src="/assets/index.js"></script>';
   const res = (url, status, body, type = "text/html", extra = {}) => ({ status, url, headers: new Headers({ "content-type": type, ...extra }), text: async () => body });
   const fetcher = async (url, opts = {}) => {
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     calls.push({ url, method: opts.method || "GET", body: opts.body });
     if (url.startsWith(SB)) {
       const path = url.slice(SB.length).split("?")[0];
@@ -96,6 +97,7 @@ test("--mine: a storage bucket that lists files to anyone is found, asking for o
 const site = (files, { page = '<script type="module" src="/assets/index.js"></script>', headers = {}, status = 200 } = {}) => {
   const calls = [];
   const fetcher = async (url) => {
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     calls.push(url);
     const u = new URL(url);
     const r = (s, body, type) => ({ status: s, url, headers: new Headers({ "content-type": type, ...(type === "text/html" ? headers : {}) }), text: async () => body });
@@ -187,6 +189,7 @@ test("verdict: a good grade with an unchecked database says so, with a prompt fo
 test("coverage: a script that won't load counts as unread, after one retry", async () => {
   const tries = {};
   const fetcher = async (url) => {
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     const path = new URL(url).pathname;
     tries[path] = (tries[path] || 0) + 1;
     const r = (s, body, type) => ({ status: s, url, headers: new Headers({ "content-type": type }), text: async () => body });
@@ -207,6 +210,7 @@ test("coverage: a script that won't load counts as unread, after one retry", asy
 const modernSupabase = (tables, script, extra = {}) => {
   const calls = [];
   const fetcher = async (url, opts = {}) => {
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     calls.push({ url, method: opts.method || "GET" });
     const r = (status, body, type = "application/json", headers = {}) => ({ status, url, headers: new Headers({ "content-type": type, ...headers }), text: async () => body });
     if (url.startsWith(SB)) {
@@ -215,6 +219,8 @@ const modernSupabase = (tables, script, extra = {}) => {
       if (path.startsWith("/rest/v1/")) {
         const t = decodeURIComponent(path.slice(9));
         if (!(t in tables)) return r(404, "");
+        const col = new URL(url).searchParams.get("select");
+        if (col !== "*" && !(extra.columns || []).includes(col)) return r(400, "");
         return tables[t] === "closed" ? r(401, "") : r(tables[t] ? 206 : 200, "", "application/json", { "content-range": tables[t] ? `0-0/${tables[t]}` : "*/0" });
       }
       if (path in extra) return r(200, JSON.stringify(extra[path]));
@@ -272,10 +278,106 @@ test("grades: small things take 20 points at most, so headers alone never fail a
 });
 
 test("fairness: on a lovable.app address, frame protection is shown but costs nothing", async () => {
-  const fetcher = async (url) => ({ status: 200, url, headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (new URL(url).pathname === "/" ? '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'"><script src="/a.js"></script>' : "1") });
+  const fetcher = async (url) => ({ status: 200, url: url.replace("http://", "https://"), headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (new URL(url).pathname === "/" ? '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'"><a href="/privacy">Privacy</a><script src="/a.js"></script>' : "1") });
   const hosted = await siteScan("myapp.lovable.app", { fetcher });
-  assert.equal(hosted.findings.find((f) => f.id === "framing").severity, "info");
+  assert.ok(!hosted.findings.some((f) => f.id === "framing"), "not a finding the owner could act on");
+  assert.match(hosted.findings.find((f) => f.id === "domain:builder").why, /only the host can change that/);
   assert.equal(hosted.score, 100);
   const own = await siteScan("myapp.example", { fetcher });
   assert.equal(own.findings.find((f) => f.id === "framing").severity, "low");
+});
+
+// --- Phases 1 to 3 (10 November 2026): launch basics, email records, deeper owner check ---
+// One page and one script, with switches for what the host and the DNS answer.
+const launchSite = ({ page = "", script = "1", pageHeaders = {}, cookies = [], dns = {}, httpStays = false, cors = false } = {}) => {
+  const calls = [];
+  const fetcher = async (url, opts = {}) => {
+    calls.push(url);
+    const u = new URL(url);
+    const r = (status, body, headers = {}, finalUrl = url) => ({ status, url: finalUrl, headers: new Headers(headers), text: async () => body });
+    if (u.hostname === "cloudflare-dns.com") {
+      const name = u.searchParams.get("name");
+      if (!(name in dns)) return r(200, JSON.stringify({ Status: 3 }));
+      return r(200, JSON.stringify({ Status: 0, Answer: dns[name].map((data) => ({ type: 16, data: `"${data}"` })) }));
+    }
+    if (u.protocol === "http:") return r(200, "", {}, httpStays ? url : url.replace("http://", "https://"));
+    if (u.pathname === "/") {
+      const h = new Headers({ "content-type": "text/html", "content-security-policy": "frame-ancestors 'none'", ...pageHeaders });
+      for (const c of cookies) h.append("set-cookie", c);
+      if (cors && opts.headers?.origin) (h.set("access-control-allow-origin", opts.headers.origin), h.set("access-control-allow-credentials", "true"));
+      return { status: 200, url, headers: h, text: async () => `<title>Shop</title><a href="/privacy">Privacy</a>${page}<script src="/a.js"></script>` };
+    }
+    return r(200, script, { "content-type": "application/javascript" });
+  };
+  return { fetcher, calls };
+};
+const ids = (r) => r.findings.map((f) => f.id);
+const GOOD_DNS = { "_dmarc.shop.example": ["v=DMARC1; p=none"], "shop.example": ["v=spf1 include:_spf.resend.com ~all"] };
+
+test("launch: a clean app on its own domain with good email records gets nothing new", async () => {
+  const r = await siteScan("shop.example", { fetcher: launchSite({ dns: GOOD_DNS }).fetcher });
+  assert.deepEqual(ids(r), []);
+  assert.equal(r.score, 100);
+});
+
+test("launch: leftovers that stop a live app working are found in what was already downloaded", async () => {
+  const script = `fetch("http://localhost:3000/api/items");const pk="pk_test_${"a".repeat(24)}";fetch("https://api.openai.com/v1/chat/completions");send({from:"onboarding@resend.dev"});`;
+  const r = await siteScan("shop.example", { fetcher: launchSite({ script, dns: GOOD_DNS, page: '<meta name="robots" content="noindex"><script src="http://cdn.other.example/x.js"></script>' }).fetcher });
+  for (const id of ["launch:localhost", "launch:test-payments", "launch:ai-direct", "launch:test-sender", "launch:noindex", "launch:mixed"]) assert.ok(ids(r).includes(id), id);
+  assert.equal(r.findings.find((f) => f.id === "launch:localhost").severity, "low", "a mention in code is only worth checking");
+  assert.ok(r.findings.every((f) => f.severity === "info" || f.prompt), "each has a fix prompt");
+  assert.ok(r.score >= 80, "small things can't fail an app");
+});
+
+test("launch: a bare localhost address in an allow-list is not a leftover; a fallback is", async () => {
+  const allow = await siteScan("shop.example", { fetcher: launchSite({ dns: GOOD_DNS, script: 'const ok=["https://lovable.dev","http://localhost:3000"];const auth="http://localhost:9999";' }).fetcher });
+  assert.deepEqual(ids(allow), []);
+  const fallback = await siteScan("shop.example", { fetcher: launchSite({ dns: GOOD_DNS, script: 'const api=import.meta.env.VITE_API||"http://localhost:5000";' }).fetcher });
+  assert.deepEqual(ids(fallback), ["launch:localhost"]);
+});
+
+test("launch: a page that loads from localhost is a real break; a default title is flagged", async () => {
+  const fetcher = async (url) => ({ status: 200, url: url.replace("http://", "https://"), headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (new URL(url).pathname === "/" ? '<title>Lovable App</title><script src="http://localhost:5173/src/main.tsx"></script><script src="/a.js"></script>' : "privacy") });
+  const r = await siteScan("shop.example", { fetcher });
+  assert.equal(r.findings.find((f) => f.id === "launch:localhost").severity, "high");
+  assert.ok(ids(r).includes("launch:default-title"));
+});
+
+test("launch: new secret shapes, an unlocked session cookie, no https redirect and open CORS", async () => {
+  const script = `const db="postgresql://app:${"s3cretPass"}@db.abcdefgh.supabase.co:5432/postgres";const w="whsec_${"b".repeat(32)}";`;
+  const r = await siteScan("shop.example", { fetcher: launchSite({ script, dns: GOOD_DNS, cookies: ["__cf_bm=x; path=/", "session_id=abc; Path=/"], httpStays: true, cors: true }).fetcher });
+  for (const id of ["secret:database-url", "secret:stripe-webhook", "launch:cookie:session_id", "launch:no-https-redirect", "launch:cors"]) assert.ok(ids(r).includes(id), id);
+  assert.ok(!ids(r).some((id) => id.includes("__cf_bm")), "the host's own cookies are ignored");
+  assert.equal(r.grade, "F");
+});
+
+test("email: a custom domain with no DMARC or a broken SPF record is flagged; a failed lookup is not", async () => {
+  const none = await siteScan("app.shop.example", { fetcher: launchSite({ dns: { "shop.example": ["v=spf1 +all"] } }).fetcher });
+  assert.ok(ids(none).includes("email:no-dmarc") && ids(none).includes("email:spf-broken"));
+  assert.match(none.findings.find((f) => f.id === "email:no-dmarc").first, /_dmarc\.shop\.example/);
+  const down = launchSite({});
+  const failing = async (url, opts) => (new URL(url).hostname === "cloudflare-dns.com" ? { status: 503, url, headers: new Headers(), text: async () => "busy" } : down.fetcher(url, opts));
+  assert.deepEqual(ids(await siteScan("shop.example", { fetcher: failing })), []);
+});
+
+test("email: on a builder's address the domain checks are skipped and said so", async () => {
+  const { fetcher, calls } = launchSite({});
+  const r = await siteScan("shop.vercel.app", { fetcher });
+  assert.ok(ids(r).includes("domain:builder"));
+  assert.ok(!calls.some((c) => c.includes("cloudflare-dns.com")));
+  assert.equal(r.score, 100);
+});
+
+test("--mine: a readable table with an email column is critical, and functions are listed but never called", async () => {
+  const script = `${client}db.from("items").select();db.functions.invoke("send-invoice");fetch(u+"/functions/v1/ai-chat");db.rpc("promote_user");`;
+  const { fetcher, calls } = modernSupabase({ items: 40 }, script, { columns: ["email", "phone"] });
+  const r = await siteScan("app.example", { fetcher, mine: true });
+  const t = r.findings.find((f) => f.id === "supabase:table:items");
+  assert.equal(t.severity, "critical");
+  assert.match(t.title, /including email, phone/);
+  const fn = r.findings.find((f) => f.id === "supabase:functions");
+  assert.match(fn.why, /send-invoice, ai-chat, promote_user/);
+  assert.match(fn.checkPrompt, /send-invoice/);
+  assert.ok(!calls.some((c) => c.url.includes("/functions/v1/") || c.url.includes("/rpc/")));
+  assert.ok(calls.filter((c) => c.url.startsWith(SB + "/rest/v1/items")).every((c) => c.method === "HEAD"));
 });

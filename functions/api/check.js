@@ -34,8 +34,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
 
   let result;
   try {
-    // Smaller limits than the CLI: one web request may make only about 50 fetches on Cloudflare's free plan.
-    result = await siteScan(t.url, { mine: false, maxScripts: 40, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 12 * 1024 * 1024, deadlineMs: 25000, scriptTimeoutMs: 6000 });
+    // Smaller limits than the CLI: one web request may make only about 50 fetches on Cloudflare's free plan, and the launch checks need a few of them.
+    result = await siteScan(t.url, { mine: false, maxScripts: 36, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 12 * 1024 * 1024, deadlineMs: 25000, scriptTimeoutMs: 6000 });
   } catch (e) {
     const message = String(e.message || e);
     // Counted by kind and day, with no address, so we can see when people are hitting a wall.

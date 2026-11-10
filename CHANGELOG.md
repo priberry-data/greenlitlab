@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 (10 November 2026)
+
+Greenlit now checks launch readiness, not only leaks. Only things it confirmed move the grade; what it couldn't see is said, and what only you know is asked.
+
+- Launch basics, read from what is already downloaded: a page that loads from a developer-only address, plain-http content on an https page, Stripe still in test mode, a default page title, an accidental "noindex", AI calls made straight from the browser, a test email sender, sign-in cookies without Secure and HttpOnly, and no privacy policy in sight. Two single requests check that plain http redirects to https and that the app doesn't hand a signed-in visitor's data to any website.
+- Two more secret shapes: database addresses with a password, and Stripe webhook signing secrets (32 kinds in all).
+- Your own domain: no DMARC record, or a broken SPF record, found through public DNS. Skipped on a builder's address, where it says so.
+- `--mine`: for tables strangers can read, asks whether personal columns (email, phone, password and the like) exist, never for their values, and names them. Backend functions the app calls are listed with a prompt to check each; Greenlit never calls them.
+- `greenlit advisor results.json`: Supabase's own Security Advisor in plain words with a fix prompt for each result. This is how to find rules that are too loose, and tables strangers can change, without Greenlit ever writing to a database.
+- `greenlit scan [folder]`: reads your project's files for always-true policies, tables created without Row Level Security, functions with the sign-in check off, unverified Stripe webhooks, secrets behind a public prefix, a tracked .env file and a writable database connection in an agent's config. Reads names in .env files, never values.
+- `greenlit questions`: seven things only you know (backups, a separate test database, spending limits, payment checks, outage alerts, email sender, database plan). Never graded. Also on the web result.
+- Web: an owner can publish a dated report page and a badge for their own app, after adding a tag that proves it is theirs. Both show the date and expire after 30 days.
+- The MCP server has three new tools: `greenlit_scan`, `greenlit_advisor`, `greenlit_questions`.
+- The CLI asks for the plain-http address the way a browser does, because some sites answer Node's own fetch differently.
+
 ## 0.3.0 (10 November 2026)
 
 - Fixed: `--mine` was reporting nothing open when it had tested nothing. Supabase stopped listing a project's tables for the public key in 2026, and Greenlit relied on that list. It now takes table names from the app's own code, reports how many tables it tested, and says plainly when it could test none.

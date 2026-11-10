@@ -8,8 +8,13 @@
 - Source: https://github.com/priberry-data/greenlitlab
 
 ## What it checks
-- Secret keys (30 kinds: Stripe, OpenAI, OpenRouter, AWS, Supabase secret keys and more) in the JavaScript every visitor downloads
+- Secret keys (32 kinds: Stripe, OpenAI, OpenRouter, AWS, Supabase secret keys and more) in the JavaScript every visitor downloads
 - A Supabase service_role key in the browser
 - Supabase tables and Firebase data anyone can read (with --mine only; counts and names, never data)
 - Source maps, clickjacking, missing security headers
 - With --mine: open sign-up without email confirmation, storage buckets anyone can list, public .env files and .git folders
+- Launch basics from outside: developer-only addresses, plain http, Stripe test mode, default title, noindex, AI calls from the browser, test email sender, unlocked cookies, no https redirect, open CORS
+- Email records (DMARC, SPF) on custom domains
+- `npx greenlitlab scan [folder]`: project files, before deploy · `npx greenlitlab advisor results.json`: Supabase Security Advisor in plain words · `npx greenlitlab questions`: seven things only the owner knows
+- MCP tools: `greenlit_check`, `greenlit_scan`, `greenlit_advisor`, `greenlit_questions`
+- An owner can publish a dated report and badge at https://greenlit.priberry.com/r/<host>; results expire after 30 days

@@ -43,6 +43,8 @@ const SECRETS = [
   [/-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----(?:\\n|\\r|\s)+[A-Za-z0-9+\/=]{60,}/, "private-key", "A private key", "Whatever this key signs in to or signs for, anyone can now do too.", "the service the key belongs to: replace the key pair there and delete the old one", "PRIVATE_KEY"],
   [/"type"\s*:\s*"service_account"[\s\S]{0,400}"private_key"/, "gcp-service-account", "A Google Cloud or Firebase service-account key", "It's an admin key: anyone can reach your Firebase and Google Cloud data with full rights.", "Google Cloud console → IAM → Service Accounts → Keys → delete this key", "GOOGLE_APPLICATION_CREDENTIALS"],
   [/AIza[0-9A-Za-z_-]{35}(?=[\s\S]{0,400}(generativelanguage|gemini))/, "gemini", "A Google AI (Gemini) API key", "Anyone can run up your Gemini bill. (Firebase keys are public by design; this one sits next to Gemini calls.)", "aistudio.google.com → API keys → delete", "GEMINI_API_KEY"],
+  [/\bwhsec_[0-9A-Za-z]{24,}/, "stripe-webhook", "A Stripe webhook signing secret", "Anyone can fake a \"payment succeeded\" message to your app and get paid features for free.", "Stripe → Developers → Webhooks → your endpoint → roll the signing secret", "STRIPE_WEBHOOK_SECRET"],
+  [/\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s:"'`\/@]{1,64}:[^\s"'`\/@]{6,}@[A-Za-z0-9.-]+\.[a-z]{2,}/, "database-url", "A database address with its password", "Anyone can connect straight to your database and read, change or delete everything in it.", "your database provider's dashboard: reset the database password, then update the apps that use it", "DATABASE_URL"],
 ];
 const JWT = /eyJ[0-9A-Za-z_-]{10,}\.eyJ[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}/g;
 const SUPABASE_URL = /https:\/\/([a-z0-9]{20})\.supabase\.co/;
@@ -56,6 +58,15 @@ const FIRESTORE_GUESSES = ["users", "profiles", "customers", "accounts", "orders
 const TABLE_REF = /\.from\(\s*["'`]([A-Za-z_][A-Za-z0-9_]{1,62})["'`]\s*\)|\/rest\/v1\/([A-Za-z_][A-Za-z0-9_]{1,62})(?![A-Za-z0-9_])/g;
 const RPC_REF = /\.rpc\(\s*["'`]([A-Za-z_][A-Za-z0-9_]{1,62})["'`]|\/rest\/v1\/rpc\/([A-Za-z_][A-Za-z0-9_]{1,62})/g;
 const BUCKET_REF = /storage\s*\.from\(\s*["'`]([A-Za-z0-9_.-]{1,63})["'`]/g;
+const EDGE_REF = /functions\s*\.invoke\(\s*["'`]([A-Za-z0-9_-]{1,63})["'`]|\/functions\/v1\/([A-Za-z0-9_-]{1,63})/g;
+// Column names that mean a readable table holds personal or secret data. Greenlit asks only whether the column exists.
+const SENSITIVE_COLUMNS = ["email", "phone", "password", "password_hash", "token", "access_token", "api_key", "secret", "address", "date_of_birth", "card_number"];
+// Addresses the builder or host owns. The owner can't change DNS, email records or most headers there.
+const BUILDER_HOST = /\.(lovable\.app|lovableproject\.com|bolt\.host|bolt\.new|replit\.app|repl\.co|replit\.dev|vercel\.app|netlify\.app|pages\.dev|workers\.dev|emergent\.host|emergentagent\.com|base44\.app|web\.app|firebaseapp\.com|github\.io|onrender\.com|fly\.dev|railway\.app)$/i;
+// Cookies set by the host or CDN, not by the app.
+const PLATFORM_COOKIE = /^(__cf|cf_|_cf|__vercel|_vercel|nf_|__Host-next|__Secure-next|AWSALB|ARRAffinity)/i;
+const DEFAULT_TITLE = /^\s*(Lovable App|Lovable Generated Project|Vite \+ React(?: \+ TS)?|Create Next App|v0 App|React App|New Project|My App|Bolt)\s*$/i;
+const AI_DIRECT = /https:\/\/(api\.openai\.com\/v1|api\.anthropic\.com\/v1|generativelanguage\.googleapis\.com\/v1|api\.groq\.com\/openai|openrouter\.ai\/api\/v1|api\.x\.ai\/v1|api\.mistral\.ai\/v1)/;
 const PERSONAL = /user|profile|customer|account|order|payment|message|chat|contact|lead|email|subscri|invoice/i;
 
 // Which app builder made this, so the fix prompt can say where to paste it.
@@ -209,6 +220,19 @@ const P = {
     db === "Supabase"
       ? "Check my Supabase database and change nothing yet. For every table, tell me whether Row Level Security is on, and which policies let someone read or change rows without signing in, or read rows that aren't theirs. Do the same for my storage buckets. Also tell me whether anyone can sign up without confirming their email. End with a plain list of what is open to strangers, worst first."
       : "Check my Firebase security rules and change nothing yet. For Firestore, Realtime Database and Storage, tell me which paths someone can read or change without signing in, or read when the data isn't theirs. End with a plain list of what is open to strangers, worst first.",
+  fnCheck: (names) => `My app calls these backend functions: ${names.join(", ")}. Check each one and change nothing yet. For every function tell me: does it check that the caller is signed in, does it check that the caller is allowed to act on the record it touches, and could a stranger call it directly and cost me money or change data? Then fix every function that fails, and show me what you changed.`,
+  localhost: (u) => ({ first: null, prompt: `My live app still points at ${u}, which only exists on a developer's computer, so that part can't work for real visitors. Find every place the app uses a localhost or 127.0.0.1 address and replace it with the live address, read from an environment variable. Then tell me each file you changed.` }),
+  mixed: () => ({ first: null, prompt: "My live app loads a script, style or frame over plain http:// from a page served over https://. Browsers block that. Change every such address to https://, or host the file with the app, and tell me what you changed." }),
+  testPayments: () => ({ first: "In Stripe, switch to live mode and copy your live publishable key (pk_live_…). Add your live secret key and webhook secret to your backend's secrets, never to the frontend.", prompt: "My live app uses a Stripe test key (pk_test_), so real customers can't pay. Switch the frontend to read the live publishable key from an environment variable, make sure the backend uses the live secret key and the live webhook signing secret from its secrets, and check that the webhook is registered for the live address. Tell me what you changed and what I still need to do in the Stripe dashboard." }),
+  title: (t) => ({ first: null, prompt: `My app's page title is still the default "${t}". Set a real title and description for the app in index.html (or the page metadata), plus the Open Graph title, description and image, so shared links look right.` }),
+  noindex: () => ({ first: null, prompt: "My live app tells search engines not to list it (a robots noindex tag or header). If this app should be found on Google, remove that tag from the live build only. If it's meant to stay private, leave it and tell me." }),
+  aiDirect: () => ({ first: null, prompt: "My app's browser code calls an AI provider's API directly. That only works if the secret key is in the browser, where anyone can copy it and spend my money. Move every AI call into a backend function that reads the key from a secret, checks the user is signed in, and limits how many calls each user can make per day. Remove the provider's key from the frontend. List what you changed." }),
+  testSender: () => ({ first: "In your email provider (for example Resend), add and verify your own domain, then choose a sender such as hello@yourdomain.", prompt: "My app sends email from a test address (onboarding@resend.dev), which only delivers to my own inbox. Change the sender to an address on my verified domain, read from an environment variable, and tell me which DNS records I must add for that domain." }),
+  cookie: (name) => ({ first: null, prompt: `My app sets the cookie "${name}" without the Secure and HttpOnly flags, so it can leak over plain http or be read by any script on the page. Set Secure, HttpOnly and SameSite=Lax on every sign-in or session cookie, and tell me where you changed it.` }),
+  httpsRedirect: () => ({ first: null, prompt: "My app answers on plain http:// without sending visitors to https://. Turn on \"always use HTTPS\" (a permanent redirect from http to https) in my host's settings, and add the header Strict-Transport-Security: max-age=31536000. Tell me exactly where that setting is for my host." }),
+  cors: () => ({ first: null, prompt: "My app tells browsers that any website may read its responses with the visitor's login attached (it repeats back whatever Origin it is sent and allows credentials). Change the CORS settings to allow only my own site's address, never a repeated-back origin together with credentials, and show me the new settings." }),
+  dmarc: (domain) => ({ first: `Add a TXT record at _dmarc.${domain} with the value: v=DMARC1; p=none; rua=mailto:you@${domain} (use an inbox you read). Your domain provider's DNS page is where this goes.`, prompt: `My domain ${domain} has no DMARC record, so anyone can send email pretending to be me, and Gmail and Outlook trust my real emails less. Tell me, step by step for my DNS provider, how to add a DMARC record starting with p=none, and how to check that my sign-up and password-reset emails pass SPF and DKIM before I tighten it to p=quarantine.` }),
+  spf: (domain) => ({ first: null, prompt: `The SPF record for my domain ${domain} is broken (there must be exactly one, and it must not end in +all). Tell me which services send email for my app, write one correct SPF record that covers them and ends in ~all, and tell me exactly what to change at my DNS provider.` }),
   sourceMaps: () => ({
     first: null,
     prompt: "My production build publishes source maps, so anyone can read my app's original source code. Turn them off for production builds only (for Vite: build.sourcemap = false in vite.config), rebuild and redeploy. Don't change anything else.",
@@ -220,7 +244,7 @@ const P = {
 };
 
 // --- the check -----------------------------------------------------------------------------------
-export async function siteScan(target, { mine = false, fetcher = fetch, maxScripts = 400, maxBytes = 8 * 1024 * 1024, maxTotalBytes = 200 * 1024 * 1024, deadlineMs = 120000, scriptTimeoutMs = 15000 } = {}) {
+export async function siteScan(target, { mine = false, fetcher = fetch, maxScripts = 400, maxBytes = 8 * 1024 * 1024, maxTotalBytes = 200 * 1024 * 1024, deadlineMs = 120000, scriptTimeoutMs = 15000, httpProbe = null, wantPage = false } = {}) {
   const deadline = Date.now() + deadlineMs;
   const fetchOpts = (o = {}) => ({ max: maxBytes, ...o, fetcher });
   const url = safeUrl(/^https?:\/\//i.test(String(target).trim()) ? String(target).trim() : `https://${String(target).trim()}`);
@@ -371,6 +395,11 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
       for (const m of b.text.matchAll(RPC_REF)) functions.add(m[1] || m[2]);
       for (const m of b.text.matchAll(BUCKET_REF)) bucketsInCode.add(m[1]);
     }
+  const edge = new Set();
+  if (supabase) for (const b of bundles) for (const m of b.text.matchAll(EDGE_REF)) edge.add(m[1] || m[2]);
+  const called = [...new Set([...edge, ...functions])];
+  if (called.length)
+    add({ id: "supabase:functions", severity: "info", where: "Supabase functions", title: `Your app calls ${called.length} backend function${called.length > 1 ? "s" : ""} that Greenlit can't test`, why: `${called.slice(0, 12).join(", ")}${called.length > 12 ? " and more" : ""}. A function that doesn't check who is calling it is open to everyone, and that is how some of the largest leaks from AI-built apps happened. Greenlit lists them and never calls them, because calling one runs it.`, fix: "Have your builder check each function (the prompt below), or open Supabase → Advisors → Security Advisor.", first: null, prompt: null, checkPrompt: P.fnCheck(called.slice(0, 30)) });
   // Signs of Supabase, but not both its address and its public key: nothing can be tested.
   const supabasePartial = Boolean(supabase && !(supabase.url && supabase.anon) && !firebase?.project);
   if (supabasePartial)
@@ -400,12 +429,20 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     dbBlind = tablesTested === 0;
     if (dbBlind)
       add({ id: "db:no-tables", severity: "info", where: "Supabase", title: "Your database tables weren't checked", why: "Greenlit couldn't find any of your table names in the code it read, and Supabase no longer lists them for the public key. So it couldn't test which tables strangers can read. Storage and sign-up settings were still checked.", fix: "Open Supabase → Advisors → Security Advisor: it lists every table that strangers can reach.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
-    for (const { table, rows } of tables) {
-      const personal = PERSONAL.test(table);
+    // For tables strangers can read: which hold personal data? Asks whether a column exists, never for its values.
+    for (const t of tables.slice(0, 8)) {
+      t.sensitive = [];
+      for (const c of SENSITIVE_COLUMNS) {
+        const r = await get(`${supabase.url}/rest/v1/${encodeURIComponent(t.table)}?select=${c}`, fetchOpts({ method: "HEAD", headers: { ...h, range: "0-0" } }));
+        if (r.status === 200 || r.status === 206) t.sensitive.push(c);
+      }
+    }
+    for (const { table, rows, sensitive = [] } of tables) {
+      const personal = PERSONAL.test(table) || sensitive.length > 0;
       const why = personal
         ? "The anon key is public (it ships in your app), so a table without Row Level Security is readable by everyone. This is how most vibe-coded apps have leaked data."
         : "The anon key is public (it ships in your app). If this table is meant to be public, like a product list, reading it is fine, but make sure strangers can't change it. If it isn't, it's leaking.";
-      add({ id: `supabase:table:${table}`, severity: personal ? "critical" : "medium", where: `Supabase table "${table}"`, title: `Anyone on the internet can read ${rows.toLocaleString("en-US")} row${rows > 1 ? "s" : ""} of "${table}"`, why, fix: `In Supabase, open Table Editor → ${table} → turn on RLS, then add a policy so people read only their own rows (for example: auth.uid() = user_id).`, ...P.rls(table, personal) });
+      add({ id: `supabase:table:${table}`, severity: personal ? "critical" : "medium", where: `Supabase table "${table}"`, title: `Anyone on the internet can read ${rows.toLocaleString("en-US")} row${rows > 1 ? "s" : ""} of "${table}"${sensitive.length ? `, including ${sensitive.slice(0, 4).join(", ")}` : ""}`, why, fix: `In Supabase, open Table Editor → ${table} → turn on RLS, then add a policy so people read only their own rows (for example: auth.uid() = user_id).`, ...P.rls(table, personal) });
     }
   }
 
@@ -477,17 +514,93 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     }
   }
 
+  // --- launch basics: things that stop a live app working, read from what was already downloaded ---
+  const hostName = new URL(origin).hostname;
+  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(hostName);
+  const secure = origin.startsWith("https:");
+  const scripts = bundles.slice(1);
+  const inScripts = (re) => scripts.map((b) => b.text.match(re)).find(Boolean);
+  if (!isLocal) {
+    const inPage = page.text.match(/(?:src|href|action)=["'](https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?[^"']*)["']/i);
+    // Libraries ship their own local defaults (Supabase auth on 9999, telemetry on 4317/4318, Sentry on 8969); those aren't the app's.
+    // A bare http://localhost:3000 in a list is usually an allow-list (Lovable's own preview code has one), so only an address
+    // with a path, or one used as a fallback or an API base, counts.
+    const inCode = scripts
+      .flatMap((b) => [...b.text.matchAll(/["'`](https?:\/\/(?:localhost|127\.0\.0\.1):(\d{2,5})(\/[A-Za-z0-9_][^"'`\s]{0,80})?)["'`]/g)].map((m) => ({ m, before: b.text.slice(Math.max(0, m.index - 40), m.index) })))
+      .find(({ m, before }) => !["9999", "4317", "4318", "8969"].includes(m[2]) && (m[3] || /(?:fetch\(|axios\.\w+\(|baseURL\s*:|(?:api|base|server|backend)\w*\s*[:=]|\|\||\?\?)\s*$/i.test(before)))?.m;
+    if (inPage) add({ id: "launch:localhost", severity: "high", where: "the page itself", title: "Your live app loads from an address that only works on a developer's computer", why: `The page points at ${inPage[1].slice(0, 80)}. Visitors' browsers can't reach that, so this part of the app is broken for everyone but its builder.`, fix: "Replace localhost addresses with the live address.", ...P.localhost(inPage[1].slice(0, 80)) });
+    else if (inCode) add({ id: "launch:localhost", severity: "low", where: "your app's scripts", title: "Your app's code mentions a developer-only address", why: `The code contains ${inCode[1].slice(0, 80)}. If the live app ever uses it, that part won't work for visitors. It may only be a fallback, so check it.`, fix: "Make sure the live app never falls back to a localhost address.", ...P.localhost(inCode[1].slice(0, 80)) });
+  }
+  if (secure && /<(?:script|link|iframe)[^>]+(?:src|href)=["']http:\/\/(?!localhost|127\.)/i.test(page.text))
+    add({ id: "launch:mixed", severity: "medium", where: "the page itself", title: "The page loads something over plain http", why: "Browsers block scripts, styles and frames loaded over http:// on an https:// page, so part of your app may silently not load.", fix: "Change the address to https://.", ...P.mixed() });
+  const allCode = [page.text, ...scripts.map((b) => b.text)];
+  if (allCode.some((t) => /\bpk_test_[0-9A-Za-z]{20,}/.test(t)) && !allCode.some((t) => /\bpk_live_[0-9A-Za-z]{20,}/.test(t)))
+    add({ id: "launch:test-payments", severity: "medium", where: "your app's scripts", title: "Payments are still in test mode", why: "The app ships a Stripe test key (pk_test_) and no live key. Real customers can't pay you until it uses live keys.", fix: "Switch to your live Stripe keys.", ...P.testPayments() });
+  const title = (page.text.match(/<title[^>]*>([^<]{0,120})<\/title>/i) || [])[1];
+  if (title && DEFAULT_TITLE.test(title))
+    add({ id: "launch:default-title", severity: "low", where: "the page itself", title: `Your app still has its default title, "${title.trim()}"`, why: "This is what shows in the browser tab, in Google and when someone shares your link.", fix: "Give the app a real title and description.", ...P.title(title.trim()) });
+  if (/<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*noindex/i.test(page.text) || /noindex/i.test(page.headers?.get("x-robots-tag") || ""))
+    add({ id: "launch:noindex", severity: "low", where: "the page itself", title: "Your app tells Google not to list it", why: "A \"noindex\" setting is on. That's right for a private tool, and a problem if you want people to find the app by searching.", fix: "Remove the noindex setting if the app should be found.", ...P.noindex() });
+  if (inScripts(AI_DIRECT))
+    add({ id: "launch:ai-direct", severity: "low", where: "your app's scripts", title: "Your app seems to call an AI provider straight from the browser", why: "Calls made from the browser need the secret key in the browser, where anyone can copy it and run up your bill. If these calls really go through your own backend, this is fine.", fix: "Send AI calls through a backend function that checks the user and limits use.", ...P.aiDirect() });
+  if (allCode.some((t) => /onboarding@resend\.dev/i.test(t)))
+    add({ id: "launch:test-sender", severity: "low", where: "your app's scripts", title: "Your app's email still uses a test sender", why: "The code mentions onboarding@resend.dev, Resend's test address. Email from it reaches only your own inbox, so real users won't get sign-up or reset emails.", fix: "Send from an address on your own verified domain.", ...P.testSender() });
+  for (const c of page.headers?.getSetCookie?.() || []) {
+    const name = c.split("=")[0].trim();
+    if (!secure || PLATFORM_COOKIE.test(name) || !/sess|sid|auth|token|jwt|login/i.test(name)) continue;
+    if (/;\s*secure/i.test(c) && /;\s*httponly/i.test(c)) continue;
+    add({ id: `launch:cookie:${name}`, severity: "medium", where: "response headers", title: `The sign-in cookie "${name}" isn't locked down`, why: "Without the Secure and HttpOnly flags, the cookie can travel over plain http or be read by any script on the page, which is how sessions get stolen.", fix: "Set Secure, HttpOnly and SameSite on session cookies.", ...P.cookie(name) });
+    break;
+  }
+  if (bundles.length > 1 && !unread && !cut && !allCode.some((t) => /privacy/i.test(t)))
+    add({ id: "launch:no-privacy", severity: "info", where: "the page and its scripts", title: "Greenlit couldn't see a privacy policy", why: "Nothing in the page or its code mentions one. If your app collects emails, names or payments, most countries expect a privacy policy that visitors can open.", fix: "Add a privacy policy page and link it from the footer and the sign-up form.", first: null, prompt: null, checkPrompt: "Add a privacy policy page and a terms page to my app, linked from the footer and from the sign-up form. Draft them from what the app actually collects and which services it sends data to, list those for me, and mark anything a lawyer should check." });
+
+  // Two single requests: does plain http send visitors to https, and will the app hand a signed-in visitor's data to any site?
+  if (secure && !isLocal) {
+    // The CLI passes its own probe (see node-probe.mjs); on the web, fetch follows the redirect and reports where it ended.
+    const plainUrl = `http://${new URL(origin).host}/`;
+    const plain = httpProbe ? await httpProbe(plainUrl) : await get(plainUrl, fetchOpts({ max: 2048, timeout: 6000 }));
+    if (httpProbe ? plain.status === 200 : plain.status === 200 && /^http:/i.test(plain.url || ""))
+      add({ id: "launch:no-https-redirect", severity: "medium", where: "your host", title: "The plain http address doesn't send visitors to https", why: "Someone who types your address without https gets an unprotected page, where passwords can be read on shared Wi-Fi.", fix: "Turn on \"always use HTTPS\" in your host's settings.", ...P.httpsRedirect() });
+    const probe = "https://greenlit-origin-check.example";
+    const cors = await get(pageUrl, fetchOpts({ max: 2048, timeout: 6000, headers: { origin: probe } }));
+    if (cors.headers?.get("access-control-allow-origin") === probe && /true/i.test(cors.headers?.get("access-control-allow-credentials") || ""))
+      add({ id: "launch:cors", severity: "high", where: "response headers", title: "Any website can read your app's responses as a signed-in visitor", why: "The app repeats back whatever site asks and allows logins to be attached. A malicious page your user visits could read their data from your app.", fix: "Allow only your own site's address in the CORS settings.", ...P.cors() });
+  }
+
+  // Lovable's own hosting sets the response headers, and this protection can't be added from inside an app
+  // (a meta tag can't do it). What the owner can't change is shown, and costs no points.
+  const hostSetsHeaders = /\.lovable\.app$/i.test(new URL(origin).hostname);
+  // --- your own domain: can your email be trusted? Looked up in public DNS; skipped on a builder's address. ---
+  const onBuilderHost = BUILDER_HOST.test(hostName);
+  if (onBuilderHost)
+    add({ id: "domain:builder", severity: "info", where: "your address", title: "You're still on the builder's address", why: `${hostName} belongs to your builder or host. Until the app is on a domain you own, you can't send email in your own name, and the host decides its security settings${hostSetsHeaders && !page.headers?.get("x-frame-options") && !/frame-ancestors/i.test(page.headers?.get("content-security-policy") || "") ? " (for example, other sites can show this app in a frame, and only the host can change that, so it costs you no points)" : ""}.`, fix: "Connect your own domain before you launch widely. Then check again here: Greenlit will also check the domain's email records.", first: null, prompt: null });
+  else if (!isLocal && hostName.includes(".")) {
+    const apex = siteKey(hostName);
+    const txt = async (name) => {
+      const r = await get(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=TXT`, fetchOpts({ max: 65536, timeout: 6000, headers: { accept: "application/dns-json" } }));
+      try {
+        const j = JSON.parse(r.text);
+        if (j.Status !== 0 && j.Status !== 3) return null;
+        return (j.Answer || []).filter((a) => a.type === 16).map((a) => String(a.data).replace(/^"|"$/g, "").replace(/"\s+"/g, ""));
+      } catch {
+        return null; // the lookup didn't work, which is not the same as "no record"
+      }
+    };
+    const dmarc = await txt(`_dmarc.${apex}`);
+    if (dmarc && !dmarc.some((t) => /^v=DMARC1/i.test(t)))
+      add({ id: "email:no-dmarc", severity: "medium", where: `DNS for ${apex}`, title: `Anyone can send email pretending to be ${apex}`, why: "The domain has no DMARC record, the setting that tells Gmail and Outlook what to do with fakes. Without it, your real sign-up and reset emails are also more likely to land in spam.", fix: `Add a DMARC record at _dmarc.${apex}.`, ...P.dmarc(apex) });
+    const spf = (await txt(apex))?.filter((t) => /^v=spf1/i.test(t));
+    if (spf && (spf.length > 1 || spf.some((t) => /\+all\b/i.test(t))))
+      add({ id: "email:spf-broken", severity: "medium", where: `DNS for ${apex}`, title: `The email sender record for ${apex} is broken`, why: spf.length > 1 ? "The domain has more than one SPF record. Mail servers treat that as an error, so your emails can fail their checks." : "The SPF record ends in +all, which tells the world that anyone may send email as you.", fix: "Keep exactly one SPF record, ending in ~all or -all.", ...P.spf(apex) });
+  }
+
   if (!page.headers?.get("content-security-policy") && !/http-equiv=["']Content-Security-Policy/i.test(page.text))
     add({ id: "csp", severity: "low", where: "response headers", title: "No Content-Security-Policy", why: "If an attacker gets a script into the page (through a comment, a profile field or a dependency), nothing stops it from sending your users' data out.", fix: "Add a Content-Security-Policy header in your host's settings.", ...P.csp([...thirdParty].slice(0, 6)) });
 
   const csp = page.headers?.get("content-security-policy") || "";
-  // Lovable's own hosting sets the response headers, and this protection can't be added from inside an app
-  // (a meta tag can't do it). What the owner can't change is shown, and costs no points.
-  const hostSetsHeaders = /\.lovable\.app$/i.test(new URL(origin).hostname);
   if (!page.headers?.get("x-frame-options") && !/frame-ancestors/i.test(csp)) {
-    if (hostSetsHeaders)
-      add({ id: "framing", severity: "info", where: "response headers", title: "Your host decides whether other sites can frame your app", why: "Other sites can show this app inside a frame, which can be used to trick people into clicks (clickjacking). On a lovable.app address the host sets these headers and we found no way for you to change them, so this costs you no points.", fix: "Nothing to do here. If you move to your own domain on a host that lets you set headers, add Content-Security-Policy: frame-ancestors 'self'.", first: null, prompt: null });
-    else
+    if (!hostSetsHeaders)
       add({ id: "framing", severity: "low", where: "response headers", title: "Other sites can put your app in a frame", why: "A malicious page can show your app inside an invisible frame and trick your users into clicking buttons they can't see (clickjacking).", fix: "Add the header Content-Security-Policy: frame-ancestors 'self' (or X-Frame-Options: DENY).", ...P.framing() });
   }
 
@@ -523,10 +636,12 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     mine,
     scripts: bundles.length - 1,
     scriptsUnread: unread,
-    supabase: supabase ? { project: supabase.ref, checked: Boolean(mine && tables && !dbBlind), tablesTested, tablesListed, readable: tables, functions: [...functions].slice(0, 50) } : null,
+    supabase: supabase ? { project: supabase.ref, checked: Boolean(mine && tables && !dbBlind), tablesTested, tablesListed, readable: tables, functions: [...functions].slice(0, 50), edgeFunctions: [...edge].slice(0, 50) } : null,
     firebase: firebase ? { project: firebase.project, checked: mine, readable: firebaseOpen } : null,
     findings,
     pasteInto: builder || "your AI app builder or coding agent",
+    // Only for the report endpoint, which looks for the owner's tag in the page.
+    ...(wantPage && { page: page.text.slice(0, 200000) }),
   };
 }
 

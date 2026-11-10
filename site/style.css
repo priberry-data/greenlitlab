@@ -202,3 +202,23 @@ h2 { font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.035em; line-height:
 .watch a { color: var(--go); text-decoration-color: currentColor; font-weight: 500; }
 .all-fixes { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 10px; font-size: 14px; color: var(--ink-2); }
 .all-fixes .copy { border-color: var(--go); color: var(--go); }
+
+/* The seven questions */
+.report > .card + .card { margin-top: 20px; }
+.asks h2 { font-size: 24px; margin: 0 0 6px; }
+.asks-lede { color: var(--ink-2); margin: 0 0 6px; max-width: 760px; }
+.asks label { display: block; font-weight: 600; font-size: 16px; margin: 0 0 10px; }
+.asks select { width: 100%; max-width: 560px; font: 400 16px var(--sans); color: var(--ink); background: var(--bg-sunk); border: 1px solid var(--line-2); border-radius: 8px; padding: 10px 12px; }
+.asks select:focus { outline: none; border-color: var(--go); box-shadow: 0 0 0 4px var(--go-dim); }
+.asks .ok { margin: 10px 0 0; }
+.asks .first { margin-top: 12px; }
+.asks .r-prompt pre { margin: 0; padding: 14px; white-space: pre-wrap; word-break: break-word; font: 400 13px/1.65 var(--mono); color: var(--ink); max-height: 240px; overflow: auto; }
+
+/* Publishing a dated report */
+.share { margin-top: 22px; padding: 18px 20px; border: 1px dashed var(--line-2); border-radius: 12px; }
+.share p { margin: 0 0 12px; color: var(--ink-2); font-size: 15px; }
+.share .r-prompt { margin: 0 0 12px; }
+.share .r-prompt pre { margin: 0; padding: 14px; white-space: pre-wrap; word-break: break-word; font: 400 13px/1.65 var(--mono); color: var(--ink); }
+.share .err-line { color: var(--stop); }
+.report h3 { font-size: 16px; margin: 22px 0 0; }
+.report .first { color: var(--ink); background: var(--warn-dim); border-left: 2px solid var(--warn); border-radius: 0 8px 8px 0; padding: 10px 14px; }

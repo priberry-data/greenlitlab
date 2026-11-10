@@ -17,7 +17,7 @@
 <meta property="og:url" content="https://greenlit.priberry.com/">
 <meta property="og:image" content="https://greenlit.priberry.com/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="/style.css?v=0.2.1">
+<link rel="stylesheet" href="/style.css?v=0.4.0">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -83,13 +83,18 @@
 
   <section id="checks" class="wrap block">
     <h2>What it looks for</h2>
+    <p class="lede">Only what Greenlit confirmed moves your grade. What it couldn't see, it says. What only you know, it asks.</p>
     <dl class="checks">
-      <div><dt>Secret keys in your code</dt><dd>30 kinds, from Stripe, OpenAI, OpenRouter and AWS to Telegram bots and private keys, that anyone can copy from the JavaScript your site sends.</dd><span class="scope">on the web</span></div>
+      <div><dt>Secret keys in your code</dt><dd>32 kinds, from Stripe, OpenAI, OpenRouter and AWS to Telegram bots and private keys, that anyone can copy from the JavaScript your site sends.</dd><span class="scope">on the web</span></div>
       <div><dt>Your database's master key</dt><dd>A Supabase <code>service_role</code> or <code>sb_secret_</code> key in the browser lets anyone read and change everything.</dd><span class="scope">on the web</span></div>
       <div><dt>Your source code, handed out</dt><dd>Source maps that let anyone download the code behind your app.</dd><span class="scope">on the web</span></div>
       <div><dt>Clickjacking and missing headers</dt><dd>The settings that stop other sites from framing your app or injecting scripts into it.</dd><span class="scope">on the web</span></div>
+      <div><dt>Leftovers that break a live app</dt><dd>A page still pointing at a developer's computer, payments in test mode, a test email sender, a default title, or a setting that hides you from Google.</dd><span class="scope">on the web</span></div>
+      <div><dt>Email people will trust</dt><dd>On your own domain: the records that stop others sending email as you, and keep your sign-up emails out of spam.</dd><span class="scope">on the web</span></div>
       <div><dt>Data anyone can read</dt><dd>Supabase tables, storage buckets and Firebase data open to the whole internet. Counted, never read.</dd><span class="scope mine">your computer</span></div>
       <div><dt>Sign-up that lets anyone in</dt><dd>Accounts without email confirmation turn "signed-in users only" rules into "anyone".</dd><span class="scope mine">your computer</span></div>
+      <div><dt>Rules that let everyone in</dt><dd>Policies that check nothing, functions that skip sign-in, payment messages nobody verifies. Read from your project's files, or from Supabase's own advisor in plain words.</dd><span class="scope mine">your computer</span></div>
+      <div><dt>What only you know</dt><dd>Backups, spending limits, a separate test database. Seven questions, asked after every check. Never graded, because we can't verify your answers.</dd><span class="scope">on the web</span></div>
       <div><dt>Files that should never be online</dt><dd>A public <code>.env</code> file with all your keys, or the <code>.git</code> folder with your whole code history.</dd><span class="scope mine">your computer</span></div>
     </dl>
   </section>
@@ -126,6 +131,6 @@
   <span><a href="https://github.com/priberry-data/greenlitlab">GitHub</a> · <a href="https://priberry.com/privacy/">Privacy</a></span>
 </footer>
 
-<script src="/app.js?v=0.2.1-2" defer></script>
+<script src="/app.js?v=0.4.0" defer></script>
 </body>
 </html>

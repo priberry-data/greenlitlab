@@ -14,7 +14,7 @@ npx greenlitlab myapp.lovable.app
 
 | Check | Where it runs |
 |---|---|
-| Secret keys in the JavaScript every visitor downloads: 30 kinds, including Stripe, OpenAI, Anthropic, OpenRouter, Gemini, AWS, GitHub, Supabase secret keys, Telegram bots, private keys and service-account JSON | everywhere |
+| Secret keys in the JavaScript every visitor downloads: 32 kinds, including Stripe, OpenAI, Anthropic, OpenRouter, Gemini, AWS, GitHub, Supabase secret keys, Telegram bots, private keys and service-account JSON | everywhere |
 | A Supabase `service_role` key in the browser | everywhere |
 | Source maps that hand out your source code | everywhere |
 | Clickjacking (no `frame-ancestors` or `X-Frame-Options`) and no Content-Security-Policy | everywhere |
@@ -30,6 +30,20 @@ Supabase no longer lists a project's tables for the public key, so `--mine` test
 
 The owner-only checks ask for a row count (Supabase), one file or document name (storage, Firebase), or the sign-up settings, never for data, and never write anything. They run only when you say the app is yours, because testing someone else's database without permission isn't OK.
 
+## Launch readiness, beyond leaks
+
+| Check | Where it runs |
+|---|---|
+| A page that loads from a developer-only address, plain-http content, Stripe in test mode, a default title, "noindex", AI calls from the browser, a test email sender, unlocked sign-in cookies | everywhere |
+| Plain http that doesn't redirect to https; an app that lets any website read a signed-in visitor's data | everywhere |
+| No DMARC record or a broken SPF record on your own domain | everywhere, custom domains only |
+| Personal columns (email, phone, password…) in tables strangers can read; backend functions listed for review | your own app, `--mine` |
+| Rules that are too loose, tables strangers can change: Supabase's Security Advisor in plain words | `advisor`, with your advisor results |
+| Always-true policies, tables without Row Level Security, unverified payment webhooks, secrets behind a public prefix | `scan`, on your project's files |
+| Backups, spending limits, a separate test database, outage alerts | `questions`: only you know, never graded |
+
+Only what Greenlit confirmed moves the grade. What it couldn't see is said out loud, and what only you know is asked. Greenlit never signs in, never reads your users' data and never writes to your database.
+
 ## Commands
 
 ```bash
@@ -39,6 +53,9 @@ npx greenlitlab <url> --prompt 1      # print fix prompt 1 only (pipe it to pbco
 npx greenlitlab <url> --prompt all    # every fix in one prompt, worst first
 npx greenlitlab <url> --json          # the full result
 npx greenlitlab <url> --fail-on high  # exit 1 if anything this serious is found, for CI
+npx greenlitlab questions             # seven things only you know, with a fix for each gap
+npx greenlitlab scan [folder]         # read your project's files before you deploy
+npx greenlitlab advisor results.json  # Supabase's Security Advisor, in plain words
 ```
 
 The last result for each app is kept in `~/.greenlit/sites/` (grade, finding ids and titles only, never keys) so the next run can show what changed.
