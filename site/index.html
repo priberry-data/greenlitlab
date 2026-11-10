@@ -19,6 +19,7 @@
 <meta property="og:image" content="https://greenlit.priberry.com/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="/style.css?v=0.4.0">
+<link rel="stylesheet" href="/term.css?v=1">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -70,6 +71,15 @@
       <p class="r-after"><span class="grade-sm g-A">A</span> after three prompts and one key change</p>
     </figure>
   </section>
+
+<section class="term-demo" aria-label="What npx greenlitlab prints in your terminal">
+  <div class="term" data-term>
+    <div class="term-bar"><i></i><i></i><i></i><b>~ — zsh</b><button class="term-replay" type="button" hidden>↻ Replay</button></div>
+    <div class="term-body" aria-hidden="true"></div>
+    <p class="term-said"></p>
+  </div>
+  <p class="term-cap">Run <code>npx greenlitlab</code> in your terminal and this is what you'll see.</p>
+</section>
 
   <section id="out" class="report wrap" aria-live="polite"></section>
 
@@ -133,5 +143,7 @@
 </footer>
 
 <script src="/app.js?v=0.4.0-3" defer></script>
+<script src="/term-data.js?v=1" defer></script>
+<script src="/term.js?v=1" defer></script>
 </body>
 </html>
