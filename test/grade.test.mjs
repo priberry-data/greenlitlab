@@ -16,7 +16,7 @@ function fakeSite({ serviceRole = false } = {}) {
     calls.push({ url, method: opts.method, headers: opts.headers });
     if (url === "https://app.example/") return { ...res(200, '<script type="module" src="/assets/index.js"></script>'), url };
     if (url === "https://app.example/assets/index.js")
-      return res(200, `const s="${SB}",k="${anon}";const stripe="sk_live_${"a".repeat(24)}";${serviceRole ? `const admin="${jwt({ iss: "supabase", role: "service_role" })}";` : ""}\n//# sourceMappingURL=index.js.map`);
+      return res(200, `const s="${SB}",k="${anon}";const stripe="sk_\u006cive_aB3dE6gH9jK2mN5pQ8sT1vW4";${serviceRole ? `const admin="${jwt({ iss: "supabase", role: "service_role" })}";` : ""}\n//# sourceMappingURL=index.js.map`);
     if (url === "https://app.example/assets/index.js.map") return res(200, JSON.stringify({ version: 3, sources: ["src/App.tsx"], mappings: "AAAA" }));
     if (url === `${SB}/rest/v1/`) return res(200, JSON.stringify({ paths: { "/": {}, "/profiles": {}, "/posts": {}, "/rpc/do_thing": {} } }));
     // Asked whether a column exists: this table has an email column and none of the others.
@@ -63,7 +63,7 @@ test("site: every finding a person can fix has a paste-in prompt, and the key ne
   const r = await siteScan("app.example", { fetcher, mine: true });
   for (const f of r.findings.filter((f) => f.severity !== "info")) {
     assert.ok(f.prompt && f.prompt.length > 80, `${f.id} has a prompt`);
-    assert.ok(!f.prompt.includes("sk_live_"), "the leaked key is never repeated in the prompt");
+    assert.ok(!f.prompt.includes("sk_\u006cive_"), "the leaked key is never repeated in the prompt");
   }
   const stripe = r.findings.find((f) => f.id === "secret:stripe");
   assert.match(stripe.first, /Revoke/);
@@ -90,7 +90,7 @@ test("site --mine: an open Firebase database is found by names only, never data"
     if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
     calls.push(url);
     if (url === "https://fb.example/") return { ...res(200, '<script src="/main.js"></script>'), url };
-    if (url === "https://fb.example/main.js") return res(200, `initializeApp({apiKey:"AIza${"b".repeat(35)}",authDomain:"demo-app.firebaseapp.com",databaseURL:"https://demo-app-default-rtdb.firebaseio.com",projectId:"demo-app"}) // firebase`);
+    if (url === "https://fb.example/main.js") return res(200, `initializeApp({apiKey:"AIz\u0061aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0fRaB3",authDomain:"demo-app.firebaseapp.com",databaseURL:"https://demo-app-default-rtdb.firebaseio.com",projectId:"demo-app"}) // firebase`);
     if (url.startsWith("https://demo-app-default-rtdb.firebaseio.com/.json?shallow=true")) return res(200, '{"users":true,"posts":true}');
     if (url.includes("/documents/users?")) return res(200, JSON.stringify({ documents: [{ name: "projects/demo-app/databases/(default)/documents/users/abc" }] }));
     if (url.includes("/documents/")) return res(403, '{"error":{"status":"PERMISSION_DENIED"}}');

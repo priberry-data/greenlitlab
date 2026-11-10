@@ -7,5 +7,5 @@ export async function onRequestGet({ params, env }) {
   try {
     report = host ? JSON.parse((await env.CHECK.get(`report:${host}`)) || "null") : null;
   } catch {}
-  return new Response(badgeSvg(report), { headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" } });
+  return new Response(badgeSvg(report), { headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": report ? "public, max-age=3600" : "public, max-age=300", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" } });
 }

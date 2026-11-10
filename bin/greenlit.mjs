@@ -84,7 +84,7 @@ if (opt.version) {
         process.exit(2);
       }
       const r = fromAdvisor(fs.readFileSync(!file || file === "-" ? 0 : file, "utf8"));
-      finish(r, `Supabase advisor · ${r.lints} results, in plain words`, { empty: "The advisor reported nothing.", footer: "These come from Supabase's own advisor. Greenlit translated them and wrote the prompts; it did not check them itself." });
+      finish(r, `Supabase advisor · ${r.lints - r.skipped} result${r.lints - r.skipped === 1 ? "" : "s"}, in plain words${r.skipped ? ` (${r.skipped} unreadable item${r.skipped === 1 ? "" : "s"} skipped)` : ""}`, { empty: "The advisor reported nothing.", footer: "These come from Supabase's own advisor. Greenlit translated them and wrote the prompts; it did not check them itself." });
     } else {
       const { QUESTIONS, advise } = await import("../src/questions.mjs");
       if (opt.json) console.log(JSON.stringify(QUESTIONS, null, 2));
@@ -153,4 +153,9 @@ if (opt.version) {
     else console.log(renderSite(result, change, { color: Boolean(process.stdout.isTTY && !process.env.NO_COLOR) }));
   }
   if (opt["fail-on"] && result.findings.some((f) => SEVERITY[f.severity] >= SEVERITY[opt["fail-on"]])) process.exitCode = 1;
+  // "Nothing found" in code that couldn't be read is not a pass.
+  else if (opt["fail-on"] && result.grade === "?") {
+    console.error("greenlit: this app's code couldn't be read, so there is nothing to pass. Exiting with 3.");
+    process.exitCode = 3;
+  }
 }

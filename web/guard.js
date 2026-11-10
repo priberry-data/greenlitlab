@@ -15,6 +15,8 @@ export function publicTarget(input) {
   const h = u.hostname.toLowerCase();
   if (!h.includes(".") || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)(localhost|local|internal|intranet|lan|home|corp|test|example|invalid)$/.test(h))
     return { error: "Enter the public address of your app, like myapp.lovable.app." };
+  // Names that exist only to point at private addresses.
+  if (/(^|\.)(nip\.io|sslip\.io|xip\.io|localtest\.me|lvh\.me|vcap\.me)$/.test(h)) return { error: "Enter the public address of your app, like myapp.lovable.app." };
   if (/(^|\.)priberry\.com$/.test(h) && !["greenlit.priberry.com", "crumple.priberry.com", "tare.priberry.com", "priberry.com"].includes(h)) return { error: "Enter the public address of your app." };
   return { url: `${u.protocol}//${h}${u.pathname === "/" ? "/" : u.pathname}` };
 }
@@ -53,11 +55,22 @@ export async function allow(request, { key, limit }) {
   return true;
 }
 
+// The same idea for anything else worth limiting, such as how often one site may be scanned by everyone together.
+export async function allowKey(name, limit, seconds) {
+  const now = Date.now();
+  const saved = await cacheGet(`k:${name}`);
+  // A fixed window: it ends `seconds` after its first use, however many uses follow.
+  const w = saved && typeof saved === "object" && now - saved.start < seconds * 1000 ? saved : { n: 0, start: now };
+  if (w.n >= limit) return false;
+  await cachePut(`k:${name}`, { n: w.n + 1, start: w.start }, Math.max(1, Math.ceil((w.start + seconds * 1000 - now) / 1000)));
+  return true;
+}
+
 // Counts for the price test, in KV so they last. Never lets a failed write break the request.
-export async function bump(env, keys) {
+export async function bump(env, keys, by = 1) {
   for (const k of keys) {
     try {
-      await env.CHECK.put(k, String(Number((await env.CHECK.get(k)) || 0) + 1));
+      await env.CHECK.put(k, String(Number((await env.CHECK.get(k)) || 0) + by));
     } catch {}
   }
 }
@@ -70,4 +83,4 @@ export const json = (body, status = 200, extra = {}) =>
 
 // A check of Greenlit's own address is a request from this site to itself, which skips the edge's http-to-https
 // redirect and would look like a missing one. For that one host the plain-http question isn't asked.
-export const selfProbe = (request, host) => (host === new URL(request.url).hostname ? { httpProbe: async () => ({ status: 0 }) } : {});
+export const selfProbe = (request, host) => (host === new URL(request.url).hostname ? { httpProbe: async () => ({ status: 301 }) } : {});

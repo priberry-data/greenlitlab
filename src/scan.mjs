@@ -8,7 +8,17 @@ import { execFileSync } from "node:child_process";
 const SKIP = new Set(["node_modules", ".git", "dist", "build", ".next", ".vercel", ".netlify", ".wrangler", "coverage", ".turbo", ".cache", "vendor", "__pycache__", ".venv"]);
 const TEXT = /\.(sql|toml|json|js|jsx|ts|tsx|mjs|cjs|py|vue|svelte)$|(^|\/)\.env[^/]*$/;
 const PUBLIC_PREFIX = "(?:VITE_|NEXT_PUBLIC_|REACT_APP_|EXPO_PUBLIC_|PUBLIC_|NUXT_PUBLIC_)";
-const SECRET_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}[A-Z0-9_]*(?:SECRET|SERVICE_ROLE|PRIVATE_KEY|PASSWORD|WEBHOOK|DATABASE_URL)[A-Z0-9_]*)`, "g");
+// The name must END in the secret word (or _KEY/_TOKEN after it): VITE_STRIPE_SECRET_KEY is a secret,
+// VITE_PASSWORD_MIN_LENGTH and VITE_WEBHOOK_URL are settings.
+const SECRET_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}[A-Z0-9_]*?(?:SECRET(?:_KEY|_TOKEN)?|SERVICE_ROLE(?:_KEY)?|PRIVATE_KEY|PASSWORD|DATABASE_URL))(?![A-Z0-9_])`, "g");
+// A key for a paid service behind a public prefix (VITE_OPENAI_API_KEY) is the same mistake under another name.
+const PAID_KEY_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}[A-Z0-9_]*?(?:OPENAI|ANTHROPIC|CLAUDE|GEMINI|GROQ|OPENROUTER|MISTRAL|PERPLEXITY|REPLICATE|HUGGINGFACE|RESEND|SENDGRID|MAILGUN|TWILIO|GITHUB)[A-Z0-9_]*?(?:KEY|TOKEN))(?![A-Z0-9_])`, "g");
+// A table or policy target the way SQL writes it: orders, public.orders, "public"."orders".
+const IDENT = String.raw`(?:"?(\w+)"?\s*\.\s*)?"?(\w+)"?`;
+// Comments blanked out, keeping every character's position so line numbers stay right.
+// Text inside single quotes is blanked too: it is data or SQL run later, not a statement in this file.
+// Double-quoted names are matched first and kept as they are, so an apostrophe in a policy's name ("Users can't …") starts nothing.
+const noComments = (sql) => sql.replace(/"(?:[^"]|"")*"|'(?:[^']|'')*'|\/\*[\s\S]*?\*\/|--[^\n]*/g, (m) => (m[0] === '"' ? m : m[0] === "'" ? `'${m.slice(1, -1).replace(/[^\n]/g, " ")}'` : m.replace(/[^\n]/g, " ")));
 
 function walk(root, max = 5000) {
   const out = [];
@@ -29,7 +39,6 @@ function walk(root, max = 5000) {
 }
 
 const lineOf = (text, index) => text.slice(0, index).split("\n").length;
-const bare = (name) => name.replace(/"/g, "").replace(/^public\./i, "").toLowerCase();
 
 export function codeScan(dir = ".") {
   const root = path.resolve(dir);
@@ -53,27 +62,40 @@ export function codeScan(dir = ".") {
     const isEnv = /(^|\/)\.env[^/]*$/.test(name);
 
     // Names only: a secret behind a public prefix is copied into the code every visitor downloads.
-    for (const m of text.matchAll(SECRET_NAME)) {
+    for (const m of [...text.matchAll(SECRET_NAME), ...text.matchAll(PAID_KEY_NAME)]) {
       if (isEnv && !new RegExp(`^\\s*(?:export\\s+)?${m[1]}\\s*=`, "m").test(text)) continue;
       add({ id: `scan:public-secret:${m[1]}`, severity: "critical", where: `${name}:${lineOf(text, m.index)}`, title: `The secret ${m[1]} is named so it ships to the browser`, why: "Anything whose name starts with a public prefix (VITE_, NEXT_PUBLIC_ and the like) is copied into the JavaScript every visitor downloads. A secret there is public.", fix: "Rename it without the public prefix and use it only in backend code.", first: "Treat this key as leaked if the app has ever been deployed with it: revoke it and make a new one.", prompt: `My project has a secret named ${m[1]}. The public prefix means it is built into the frontend, where anyone can read it. Rename it without the prefix, move every use of it into backend code (an edge function or server route) that checks the user is signed in, and confirm it no longer appears anywhere in the frontend build. List the files you changed.` });
     }
     if (isEnv) continue;
 
     if (name.endsWith(".sql")) {
-      for (const m of text.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?((?:public\.)?"?[a-z_][\w]*"?)/gi)) if (!/^(auth|storage|pg_)/i.test(m[1])) created.has(bare(m[1])) || created.set(bare(m[1]), `${name}:${lineOf(text, m.index)}`);
-      for (const m of text.matchAll(/alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?((?:public\.)?"?[a-z_][\w]*"?)\s+enable\s+row\s+level\s+security/gi)) protectedTables.add(bare(m[1]));
-      for (const m of text.matchAll(/create\s+policy\s+[\s\S]*?;/gi)) {
-        const stmt = m[0];
-        if (!/(?:using|with\s+check)\s*\(\s*true\s*\)/i.test(stmt)) continue;
-        const table = bare((stmt.match(/\bon\s+((?:[a-z_]\w*\.)?"?[a-z_]\w*"?)/i) || [, "a table"])[1]);
-        const action = (stmt.match(/\bfor\s+(select|insert|update|delete|all)\b/i) || [, "all"])[1].toLowerCase();
-        const toAuthed = /\bto\s+authenticated\b/i.test(stmt) && !/\banon\b/i.test(stmt);
+      const sql = noComments(text);
+      for (const m of sql.matchAll(new RegExp(String.raw`create\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?${IDENT}`, "gi"))) {
+        // Only the public schema is reachable with the app's public key.
+        if ((m[1] || "public").toLowerCase() !== "public") continue;
+        const table = m[2].toLowerCase();
+        created.has(table) || created.set(table, `${name}:${lineOf(sql, m.index)}`);
+      }
+      for (const m of sql.matchAll(new RegExp(String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${IDENT}\s+enable\s+row\s+level\s+security`, "gi"))) if ((m[1] || "public").toLowerCase() === "public") protectedTables.add(m[2].toLowerCase());
+      // The policy's own name is skipped first: it is free text and often contains the word "on".
+      for (const m of sql.matchAll(new RegExp(String.raw`create\s+policy\s+(?:"[^"]*"|\w+)\s+on\s+${IDENT}([^;]*);`, "gi"))) {
+        const rest = m[3];
+        if (!/(?:using|with\s+check)\s*\(+\s*true\s*\)+/i.test(rest)) continue;
+        // Policies in a private schema open nothing to the app's public key; storage is named in full.
+        const schema = (m[1] || "public").toLowerCase();
+        if (schema !== "public" && schema !== "storage") continue;
+        const roles = (rest.match(/\bto\s+([\w\s,"]+?)(?=\s+(?:using|with)\b|$)/i) || [, ""])[1].toLowerCase();
+        // The service role skips every rule anyway; a policy for it alone opens nothing.
+        if (/service_role/.test(roles) && !/anon|authenticated|public/.test(roles)) continue;
+        const table = schema === "public" ? m[2].toLowerCase() : `${schema}.${m[2].toLowerCase()}`;
+        const action = (rest.match(/\bfor\s+(select|insert|update|delete|all)\b/i) || [, "all"])[1].toLowerCase();
+        const toAuthed = /authenticated/.test(roles) && !/anon|public/.test(roles);
         const readOnly = action === "select";
-        add({ id: `scan:policy-true:${table}:${action}`, severity: readOnly ? "medium" : "high", where: `${name}:${lineOf(text, m.index)}`, title: readOnly ? `A rule lets ${toAuthed ? "every signed-in user" : "everyone"} read all of "${table}"` : `A rule lets ${toAuthed ? "every signed-in user" : "everyone"} ${action === "all" ? "read, change and delete" : action} rows in "${table}"`, why: `The policy's condition is simply "true", so Row Level Security is on but checks nothing for this action.${readOnly ? " That is fine for a public list such as products, and a leak for anything about people." : ""}`, fix: "Compare auth.uid() with the row's owner column instead of using true.", first: null, prompt: `In my database, a Row Level Security policy on "${table}" for ${action} uses the condition true, so ${toAuthed ? "any signed-in user" : "anyone"} passes it. Rewrite it so a user can only ${action === "all" ? "reach" : action} their own rows (auth.uid() = the owner column; add that column if it's missing). If "${table}" really is meant to be public to read, keep a read-only policy and make insert, update and delete owner-only. Write this as a new migration, don't edit old ones, and show me the SQL.` });
+        add({ id: `scan:policy-true:${table}:${action}`, severity: readOnly ? "medium" : "high", where: `${name}:${lineOf(sql, m.index)}`, title: readOnly ? `A rule lets ${toAuthed ? "every signed-in user" : "everyone"} read all of "${table}"` : `A rule lets ${toAuthed ? "every signed-in user" : "everyone"} ${action === "all" ? "read, change and delete" : action} rows in "${table}"`, why: `The policy's condition is simply "true", so Row Level Security is on but checks nothing for this action.${readOnly ? " That is fine for a public list such as products, and a leak for anything about people." : ""}`, fix: "Compare auth.uid() with the row's owner column instead of using true.", first: null, prompt: `In my database, a Row Level Security policy on "${table}" for ${action} uses the condition true, so ${toAuthed ? "any signed-in user" : "anyone"} passes it. Rewrite it so a user can only ${action === "all" ? "reach" : action} their own rows (auth.uid() = the owner column; add that column if it's missing). If "${table}" really is meant to be public to read, keep a read-only policy and make insert, update and delete owner-only. Write this as a new migration, don't edit old ones, and show me the SQL.` });
       }
       if (/(^|\/)migrations\//.test(name)) {
-        const d = text.match(/^\s*(drop\s+table|truncate)\b[^;]*;/im);
-        if (d) add({ id: `scan:destructive:${name}`, severity: "low", where: `${name}:${lineOf(text, d.index)}`, title: "A migration deletes data", why: `It contains "${d[0].trim().slice(0, 60)}". Run against the live database, that data is gone unless you have a backup.`, fix: "Make sure a backup exists before this runs on the live database.", first: null, prompt: `My migration ${name} contains a statement that deletes data (${d[1].toLowerCase()}). Tell me exactly what would be lost if it runs on the live database, whether that is intended, and how to back up that data first. Change nothing.` });
+        const d = sql.match(/^\s*(drop\s+table|truncate)\b[^;]*;/im);
+        if (d) add({ id: `scan:destructive:${name}`, severity: "low", where: `${name}:${lineOf(sql, d.index)}`, title: "A migration deletes data", why: `It contains "${d[0].trim().slice(0, 60)}". Run against the live database, that data is gone unless you have a backup.`, fix: "Make sure a backup exists before this runs on the live database.", first: null, prompt: `My migration ${name} contains a statement that deletes data (${d[1].toLowerCase()}). Tell me exactly what would be lost if it runs on the live database, whether that is intended, and how to back up that data first. Change nothing.` });
       }
     }
 
@@ -83,7 +105,7 @@ export function codeScan(dir = ".") {
     }
 
     if (/webhook/i.test(name) && /\.(js|ts|mjs|tsx|py)$/.test(name) && /stripe/i.test(text) && !/constructEvent|construct_event|stripe-signature/i.test(text))
-      add({ id: `scan:webhook:${name}`, severity: "high", where: name, title: "Payment messages are accepted without checking who sent them", why: "This Stripe webhook handler never verifies the Stripe-Signature header, so anyone can send it a fake \"payment succeeded\" message.", fix: "Verify the signature with stripe.webhooks.constructEvent and the signing secret.", first: null, prompt: `My Stripe webhook handler in ${name} doesn't verify the Stripe-Signature header. Change it to read the raw request body and call stripe.webhooks.constructEvent (constructEventAsync on edge runtimes) with the signing secret from a server secret, reject anything that fails with a 400, and only then act on the event. Show me the change.` });
+      add({ id: `scan:webhook:${name}`, severity: "medium", where: name, title: "Greenlit couldn't see a signature check in this payment webhook", why: "This file handles Stripe messages but never mentions the Stripe-Signature header or constructEvent. If the check isn't done in another file it calls, anyone can send a fake \"payment succeeded\" message.", fix: "Verify the signature with stripe.webhooks.constructEvent and the signing secret.", first: null, prompt: `My Stripe webhook handler in ${name} doesn't verify the Stripe-Signature header. Change it to read the raw request body and call stripe.webhooks.constructEvent (constructEventAsync on edge runtimes) with the signing secret from a server secret, reject anything that fails with a 400, and only then act on the event. Show me the change.` });
 
     if (/(^|\/)(\.mcp\.json|\.cursor\/mcp\.json|\.vscode\/mcp\.json)$/.test(name) && (/postgres(?:ql)?:\/\//i.test(text) || (/supabase/i.test(text) && !/read[-_]only/i.test(text))))
       add({ id: `scan:agent-db:${name}`, severity: "medium", where: name, title: "Your coding agent can change your database", why: "This agent configuration gives the AI a database connection that isn't read-only. An agent has deleted a production database this way.", fix: "Use the read-only mode, and point the agent at a development database.", first: null, prompt: `My agent configuration in ${name} gives you a database connection that can write. Tell me how to change it to read-only and scoped to a development project (for the Supabase MCP server: the read-only and project-ref options), and whether the live database is reachable with it today. Change nothing until I confirm.` });

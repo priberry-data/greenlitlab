@@ -8,12 +8,13 @@ export const isFresh = (report, now = Date.now()) => now - new Date(report.at).g
 // Only a host name: letters, digits, dots and dashes. Anything else never reaches storage or a page.
 export const cleanHost = (h) => {
   const v = String(h || "").toLowerCase().replace(/\.svg$/, "");
-  return /^[a-z0-9]([a-z0-9-]{0,62}\.)+[a-z]{2,24}$/.test(v) ? v : null;
+  return /^[a-z0-9]([a-z0-9-]{0,62}\.)+([a-z]{2,24}|xn--[a-z0-9-]{2,59})$/.test(v) ? v : null;
 };
 
 // What is kept: the grade, the date, and each finding's level and title. Never keys, never the fix prompts.
-export const toReport = (result, at = new Date().toISOString()) => ({
-  host: new URL(result.url).host,
+// `host` is the address the owner asked about (the one in the report's own address), not where a redirect ended.
+export const toReport = (result, host = new URL(result.url).host, at = new Date().toISOString()) => ({
+  host,
   at,
   grade: result.grade,
   score: result.score,
@@ -26,7 +27,29 @@ export const toReport = (result, at = new Date().toISOString()) => ({
 
 // The tag the owner adds to prove the app is theirs.
 export const claimTag = (token) => `<meta name="greenlit" content="${token}">`;
-export const hasClaim = (html, token) => new RegExp(`<meta[^>]+name=["']greenlit["'][^>]+content=["']${token}["']|<meta[^>]+content=["']${token}["'][^>]+name=["']greenlit["']`, "i").test(html || "");
+// Only a real tag in the page's <head> counts. The same text inside a comment, a script, a text box or the body
+// (where visitors' own words can end up) proves nothing.
+export const hasClaim = (html, token) => {
+  const head = String(html || "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(script|style|textarea|template|noscript|title)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .split(/<\/head\s*>|<body\b/i)[0];
+  // Each meta tag is read attribute by attribute, so unquoted values (as HTML minifiers write them) count.
+  // Every tag is read whole, quotes included, so the tag's text inside any other tag's value is swallowed with it.
+  for (const tag of head.match(/<[a-z][\w:-]*(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || []) {
+    if (!/^<meta[\s\/>]/i.test(tag)) continue;
+    const attrs = {};
+    for (const a of tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? a[4];
+    if (attrs.name === "greenlit" && attrs.content === token) return true;
+  }
+  return false;
+};
+
+// The tag for an app: made from a secret only the server holds, so nothing has to be stored to hand one out.
+export async function claimToken(salt, host) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}|${host}`));
+  return [...new Uint8Array(digest)].slice(0, 10).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 const TONE = { A: "#0b9a47", B: "#0b9a47", C: "#b26a00", D: "#d32f24", F: "#d32f24", "?": "#6c726e" };
 
@@ -45,12 +68,12 @@ export function reportPage(report, host, now = Date.now()) {
   const fresh = isFresh(report, now);
   const graded = report.findings.filter((f) => f.severity !== "info");
   const notes = report.findings.filter((f) => f.severity === "info");
-  const list = (items) => `<ul class="r-list">${items.map((f) => `<li><i class="dot ${esc(f.severity)}"></i><span>${esc(f.title)}</span><em>${esc(f.severity === "info" ? "not checked" : f.severity)}</em></li>`).join("")}</ul>`;
+  const list = (items) => `<ul class="r-list">${items.map((f) => `<li><i class="dot ${esc(f.severity)}"></i><span>${esc(f.title)}</span><em>${esc(f.severity === "info" ? "note" : f.severity)}</em></li>`).join("")}</ul>`;
   return `${head(`${report.host} · Greenlit report`)}<div class="card">
 <div class="r-head"><span class="grade ${fresh ? (report.grade === "?" ? "g-none" : `g-${esc(report.grade)}`) : "g-none"}">${fresh ? esc(report.grade) : "–"}</span><div><p class="r-verdict">${fresh ? esc(report.verdict) : "This result is out of date."}</p><p class="r-meta">${esc(report.host)} · checked ${esc(day(report.at))}${report.score == null ? "" : ` · ${esc(report.score)}/100`} · ${esc(report.scripts)} script${report.scripts === 1 ? "" : "s"} read${report.scriptsUnread ? `, ${esc(report.scriptsUnread)} not read` : ""}</p></div></div>
 ${fresh ? "" : `<p class="first">Greenlit results count for ${FRESH_DAYS} days, because apps change. This one was checked on ${esc(day(report.at))}; the owner needs to check again.</p>`}
 ${graded.length ? list(graded) : `<p class="ok">Nothing found in what Greenlit could see.</p>`}
-${notes.length ? `<h3>What this check could not see</h3>${list(notes)}` : ""}
-<p class="note">What this means: on ${esc(day(report.at))}, Greenlit looked at what any visitor to ${esc(report.host)} can see, such as its code, headers and public settings. It did not sign in, did not test the database behind the app, and is not a security audit or a guarantee. The owner of this app chose to publish this result.</p>
+${notes.length ? `<h3>Notes, and what this check could not see</h3>${list(notes)}` : ""}
+<p class="note">What this means: on ${esc(day(report.at))}, Greenlit looked at what any visitor to ${esc(report.host)} can see, such as its code, headers and public settings. It did not sign in, did not test the database behind the app, and is not a security audit or a guarantee. The owner of this app turned on public reports by adding a Greenlit tag to it. Anyone can refresh this page's result, so it shows the latest check, good or bad. Removing the tag takes the report down.</p>
 </div>${foot}`;
 }

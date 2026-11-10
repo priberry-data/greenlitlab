@@ -23,7 +23,7 @@
 
   // The same wording as allPrompts() in src/grade.mjs, so the web and the CLI give the same combined prompt.
   const allPrompts = (list) =>
-    [`My app has ${list.length} security problems to fix. Work through them in this order, one at a time. After each one, tell me what you changed before moving on. Don't change anything unrelated.`, ...list.map((f, i) => `${i + 1}. ${f.title}.\n${f.prompt}`)].join("\n\n");
+    [`My app has ${list.length} problem${list.length > 1 ? "s" : ""} to fix. Work through them in this order, one at a time. After each one, tell me what you changed before moving on. Don't change anything unrelated.`, ...list.map((f, i) => `${i + 1}. ${f.title}.\n${f.prompt}`)].join("\n\n");
 
   const copyButton = (text, label = "Copy") => {
     const b = el("button", "copy", label);
@@ -53,6 +53,12 @@
     return b;
   };
 
+  // How old a saved result is, in words.
+  const ago = (iso) => {
+    const min = Math.round((Date.now() - Date.parse(iso)) / 60000);
+    return !iso || Number.isNaN(min) ? "a few minutes ago" : min < 1 ? "just now" : `${min} minute${min === 1 ? "" : "s"} ago`;
+  };
+
   function render(r) {
     const card = el("div", "card");
     out.replaceChildren(card);
@@ -65,7 +71,7 @@
     })();
     const head = el("div", "r-head");
     const text = el("div");
-    text.append(el("p", "r-verdict", r.verdict), el("p", "r-meta", `${host}${r.builder ? ` · built with ${r.builder}` : ""}${r.score == null ? "" : ` · ${r.score}/100`} · ${r.scripts} script${r.scripts === 1 ? "" : "s"} read${r.cached ? " · checked in the last 2 minutes" : ""}`));
+    text.append(el("p", "r-verdict", r.verdict), el("p", "r-meta", `${host}${r.builder ? ` · built with ${r.builder}` : ""}${r.score == null ? "" : ` · ${r.score}/100`} · ${r.scripts} script${r.scripts === 1 ? "" : "s"} read${r.cached ? ` · checked ${ago(r.checkedAt)}` : ""}`));
     head.append(el("span", `grade ${r.grade === "?" ? "g-none" : `g-${r.grade}`}`, r.grade), text);
     card.append(head);
     if (!r.findings.length) card.append(el("p", "ok", "Nothing found that a stranger could use against you."));
@@ -118,13 +124,20 @@
       const start = el("button", "copy", "Publish a dated report");
       start.type = "button";
       const post = async (step) => {
-        const res = await fetch("/api/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: r.url, step }) });
-        return { ok: res.ok, data: await res.json().catch(() => ({ error: "Something went wrong. Try again in a minute." })) };
+        try {
+          const res = await fetch("/api/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: r.url, step }) });
+          return { ok: res.ok, data: await res.json().catch(() => ({ error: "Something went wrong. Try again in a minute." })) };
+        } catch {
+          return { ok: false, data: { error: "Couldn't reach Greenlit. Check your connection and try again." } };
+        }
       };
       start.addEventListener("click", async () => {
         start.disabled = true;
         const { ok, data } = await post("start");
-        if (!ok) return share.replaceChildren(el("p", "err-line", data.error));
+        if (!ok) {
+          start.disabled = false;
+          return share.replaceChildren(el("p", "err-line", data.error), start);
+        }
         const prompt = `Add this exact tag inside the <head> of my app's main HTML page (index.html, or the root layout), then publish the app:\n${data.tag}`;
         const box = el("div", "r-prompt");
         const bar = el("div", "r-prompt-bar");
@@ -138,7 +151,7 @@
           msg.textContent = "Checking your live app for the tag…";
           const done = await post("publish");
           go2.disabled = false;
-          if (!done.ok) return (msg.textContent = done.data.error);
+          if (!done.ok || done.data.removed) return (msg.textContent = done.data.error || done.data.message);
           const link = el("a", null, `${location.origin}${done.data.report}`);
           link.href = done.data.report;
           const embed = `<a href="${location.origin}${done.data.report}"><img src="${location.origin}${done.data.badge}" alt="Greenlit report" height="22"></a>`;
@@ -150,9 +163,9 @@
           b2.append(bar2, el("pre", null, embed));
           share.replaceChildren(p, b2);
         });
-        share.replaceChildren(el("p", null, "This proves the app is yours. The tag is harmless and visitors never see it."), box, go2, msg);
+        share.replaceChildren(el("p", null, "The tag proves the app is yours, and turns public reports on. Visitors never see it. While it is on your app, anyone can refresh the report, so it always shows the latest result, good or bad. Take the tag off and check again to remove the report."), box, go2, msg);
       });
-      share.append(el("p", null, "Want to show this result? Publish a dated report page and a badge for your own app. Free. It shows the date, and expires after 30 days."), start);
+      share.append(el("p", null, "Want to show this result? Turn on a public, dated report page and a badge for your own app. Free. It shows the date and counts for 30 days."), start);
       card.append(share);
     }
 
@@ -181,12 +194,16 @@
 
   // What no check can see. The answers stay in this browser and never change the grade.
   let questions = null;
+  let run = 0;
   async function ask(pasteInto) {
+    const mine = ++run;
     try {
       questions = questions || (await (await fetch("/api/questions")).json());
     } catch {
       return;
     }
+    // A newer check started while the questions were loading.
+    if (mine !== run || !out.querySelector(".card")) return;
     const card = el("div", "card asks");
     card.append(el("h2", null, "Seven things only you know"), el("p", "asks-lede", "No check can see these, so Greenlit asks. Your answers stay in your browser and don't change the grade above."));
     const tally = el("p", "note");
@@ -231,11 +248,12 @@
   }
 
   async function check(url) {
+    run++;
     go.disabled = true;
     go.textContent = "Checking…";
     out.replaceChildren();
     say(`Looking at ${url} the way a stranger would…`, "wait");
-    const slow = setTimeout(() => say("Still reading. Bigger apps can take up to thirty seconds.", "wait"), 8000);
+    const slow = setTimeout(() => say("Still reading. Bigger apps can take up to a minute.", "wait"), 8000);
     const stop = new AbortController();
     const limit = setTimeout(() => stop.abort(), 60000);
     const fail = (text) => {

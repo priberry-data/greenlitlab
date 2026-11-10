@@ -4,7 +4,7 @@
 
 - Web: https://greenlit.priberry.com (paste an address; reads only what every visitor can see)
 - CLI: `npx greenlitlab myapp.lovable.app` · own app, with database checks: `npx greenlitlab myapp.lovable.app --mine`
-- MCP server: `npx -y greenlitlab mcp`, one tool, `greenlit_check`
+- MCP server: `npx -y greenlitlab mcp`
 - Source: https://github.com/priberry-data/greenlitlab
 
 ## What it checks

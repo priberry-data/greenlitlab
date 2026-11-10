@@ -35,11 +35,11 @@ const keyIds = async (script) => (await siteScan("app.example", { fetcher: host(
 test("keys: new kinds of leaked keys are found", async () => {
   const ids = await keyIds(
     [
-      `a="sb_secret_${"A".repeat(30)}"`,
-      `b="sk-or-v1-${"a1".repeat(32)}"`,
-      `c="123456789:AA${"b".repeat(33)}"`,
-      `d="hf_${"c".repeat(34)}"`,
-      `e="-----BEGIN PRIVATE KEY-----\\n${"M".repeat(64)}"`,
+      `a="sb_\u0073ecret_aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0"`,
+      `b="sk-\u006fr-v1-a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"`,
+      `c="8213746590\u003aAAaB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0fRa"`,
+      `d="h\u0066_aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0fRaB"`,
+      `e="-----BEGIN PRIV\u0041TE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj"`,
       `f={"type": "service_account", "project_id": "x", "private_key": "..."}`,
     ].join(";"),
   );
@@ -47,7 +47,7 @@ test("keys: new kinds of leaked keys are found", async () => {
 });
 
 test("keys: library code that only mentions key formats is not a leak", async () => {
-  const ids = await keyIds('const H="-----BEGIN PRIVATE KEY-----";const t=type==="service_account";const pk="pk.eyJabc";const k="key-"+id;');
+  const ids = await keyIds('const H="-----BEGIN PRIV\u0041TE KEY-----";const t=type==="service_account";const pk="pk.eyJabc";const k="key-"+id;');
   assert.deepEqual(ids, []);
 });
 
@@ -108,7 +108,7 @@ const site = (files, { page = '<script type="module" src="/assets/index.js"></sc
   };
   return { fetcher, calls };
 };
-const LEAK = `const k="sk_live_${"a".repeat(24)}";`;
+const LEAK = `const k="sk_\u006cive_aB3dE6gH9jK2mN5pQ8sT1vW4";`;
 
 test("coverage: a key on a lazy-loaded page is found through Vite's list of chunks", async () => {
   const { fetcher } = site({
@@ -268,13 +268,11 @@ test("Supabase address without its key: the database is reported as not checked"
 });
 
 test("grades: small things take 20 points at most, so headers alone never fail an app", async () => {
-  const maps = Object.fromEntries(Array.from({ length: 1 }, () => ["/x", ""]));
   const { fetcher } = modernSupabase(Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`list${i}`, 5])), client + Array.from({ length: 12 }, (_, i) => `db.from("list${i}");`).join(""));
   const r = await siteScan("app.example", { fetcher, mine: true });
   assert.equal(r.findings.filter((f) => f.severity === "medium").length, 12);
   assert.equal(r.score, 80);
   assert.equal(r.grade, "B");
-  assert.ok(maps);
 });
 
 test("fairness: on a lovable.app address, frame protection is shown but costs nothing", async () => {
@@ -321,7 +319,7 @@ test("launch: a clean app on its own domain with good email records gets nothing
 });
 
 test("launch: leftovers that stop a live app working are found in what was already downloaded", async () => {
-  const script = `fetch("http://localhost:3000/api/items");const pk="pk_test_${"a".repeat(24)}";fetch("https://api.openai.com/v1/chat/completions");send({from:"onboarding@resend.dev"});`;
+  const script = `fetch("http://localhost:3000/api/items");const pk="pk_\u0074est_aB3dE6gH9jK2mN5pQ8sT1vW4";fetch("https://api.openai.com/v1/chat/completions");send({from:"onboarding@resend.dev"});`;
   const r = await siteScan("shop.example", { fetcher: launchSite({ script, dns: GOOD_DNS, page: '<meta name="robots" content="noindex"><script src="http://cdn.other.example/x.js"></script>' }).fetcher });
   for (const id of ["launch:localhost", "launch:test-payments", "launch:ai-direct", "launch:test-sender", "launch:noindex", "launch:mixed"]) assert.ok(ids(r).includes(id), id);
   assert.equal(r.findings.find((f) => f.id === "launch:localhost").severity, "low", "a mention in code is only worth checking");
@@ -344,7 +342,7 @@ test("launch: a page that loads from localhost is a real break; a default title 
 });
 
 test("launch: new secret shapes, an unlocked session cookie, no https redirect and open CORS", async () => {
-  const script = `const db="postgresql://app:${"s3cretPass"}@db.abcdefgh.supabase.co:5432/postgres";const w="whsec_${"b".repeat(32)}";`;
+  const script = `const db="postgresql://app:${"s3cretPass"}@db.abcdefgh.supabase.co:5432/postgres";const w="whse\u0063_aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0fR";`;
   const r = await siteScan("shop.example", { fetcher: launchSite({ script, dns: GOOD_DNS, cookies: ["__cf_bm=x; path=/", "session_id=abc; Path=/"], httpStays: true, cors: true }).fetcher });
   for (const id of ["secret:database-url", "secret:stripe-webhook", "launch:cookie:session_id", "launch:no-https-redirect", "launch:cors"]) assert.ok(ids(r).includes(id), id);
   assert.ok(!ids(r).some((id) => id.includes("__cf_bm")), "the host's own cookies are ignored");
@@ -357,7 +355,10 @@ test("email: a custom domain with no DMARC or a broken SPF record is flagged; a 
   assert.match(none.findings.find((f) => f.id === "email:no-dmarc").first, /_dmarc\.shop\.example/);
   const down = launchSite({});
   const failing = async (url, opts) => (new URL(url).hostname === "cloudflare-dns.com" ? { status: 503, url, headers: new Headers(), text: async () => "busy" } : down.fetcher(url, opts));
-  assert.deepEqual(ids(await siteScan("shop.example", { fetcher: failing })), []);
+  const unknown = await siteScan("shop.example", { fetcher: failing });
+  assert.deepEqual(ids(unknown), ["launch:unchecked"], "a lookup that failed is said, and is not a finding");
+  assert.match(unknown.findings[0].why, /email records for shop\.example/);
+  assert.equal(unknown.score, 100);
 });
 
 test("email: on a builder's address the domain checks are skipped and said so", async () => {
@@ -368,16 +369,258 @@ test("email: on a builder's address the domain checks are skipped and said so", 
   assert.equal(r.score, 100);
 });
 
-test("--mine: a readable table with an email column is critical, and functions are listed but never called", async () => {
+test("--mine: an email column makes a readable table serious, a secret column critical, and functions are never called", async () => {
   const script = `${client}db.from("items").select();db.functions.invoke("send-invoice");fetch(u+"/functions/v1/ai-chat");db.rpc("promote_user");`;
   const { fetcher, calls } = modernSupabase({ items: 40 }, script, { columns: ["email", "phone"] });
   const r = await siteScan("app.example", { fetcher, mine: true });
   const t = r.findings.find((f) => f.id === "supabase:table:items");
-  assert.equal(t.severity, "critical");
+  assert.equal(t.severity, "high", "emails in a table that may be a public directory: serious, not an automatic F");
   assert.match(t.title, /including email, phone/);
+  const secret = await siteScan("app.example", { fetcher: modernSupabase({ items: 40 }, script, { columns: ["api_key"] }).fetcher, mine: true });
+  assert.equal(secret.findings.find((f) => f.id === "supabase:table:items").severity, "critical");
+  const plain = await siteScan("app.example", { fetcher: modernSupabase({ stores: 40, leaderboard: 9, border_styles: 3, subscription_plans: 4 }, `${client}db.from("stores");db.from("leaderboard");db.from("border_styles");db.from("subscription_plans");`, { columns: ["phone", "address"] }).fetcher, mine: true });
+  assert.ok(plain.findings.filter((f) => f.id.startsWith("supabase:table:")).every((f) => f.severity === "medium"), "public-looking tables are a question, not an F");
+  assert.equal(plain.grade, "B");
   const fn = r.findings.find((f) => f.id === "supabase:functions");
   assert.match(fn.why, /send-invoice, ai-chat, promote_user/);
   assert.match(fn.checkPrompt, /send-invoice/);
   assert.ok(!calls.some((c) => c.url.includes("/functions/v1/") || c.url.includes("/rpc/")));
   assert.ok(calls.filter((c) => c.url.startsWith(SB + "/rest/v1/items")).every((c) => c.method === "HEAD"));
+});
+
+// --- review fixes (10 November 2026) ---
+import { looksReal } from "../src/grade.mjs";
+
+test("keys: example values in library text and docs are never reported as leaks", async () => {
+  const docs = [
+    'help="postgresql://postgres:[YOUR-PASSWORD]@db.abcdefghijklmnopqrst.supabase.co:5432/postgres"',
+    'm="mongodb+srv://<username>:<password>@cluster0.mongodb.net/"',
+    'e="postgres://user:password@db.example.com:5432/mydb"',
+    "t=`postgresql://${user}:${password}@aws-0-us-east-1.pooler.supabase.com:6543/postgres`",
+    'w="whse\u0063_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"',
+    'k="sk_\u006cive_aaaaaaaaaaaaaaaaaaaaaaaa"',
+  ].join(";");
+  const r = await siteScan("shop.example", { fetcher: launchSite({ script: docs, dns: GOOD_DNS }).fetcher });
+  assert.deepEqual(ids(r), []);
+  assert.equal(r.grade, "A");
+  // A real one after an example in the same file is still found.
+  const mixed = await siteScan("shop.example", { fetcher: launchSite({ script: `${docs};real="postgresql://app:Zx81kqPw93LmNs2@db.prodhost.io:5432/app"`, dns: GOOD_DNS }).fetcher });
+  assert.deepEqual(ids(mixed), ["secret:database-url"]);
+  assert.equal(looksReal("whse\u0063_aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0fR"), true);
+});
+
+test("launch: plain links load nothing, CSRF cookies are left alone, and an http-only app is said to be http", async () => {
+  const page = '<a href="http://localhost:3000">run it locally</a><link rel="canonical" href="http://shop.example/"><link rel="profile" href="http://gmpg.org/xfn/11"><a href="http://localhost.example.com/">x</a>';
+  const r = await siteScan("shop.example", { fetcher: launchSite({ page, dns: GOOD_DNS, cookies: ["XSRF-TOKEN=abc; Secure; SameSite=Lax", "csrftoken=abc; Secure", "consid=1; Secure"] }).fetcher });
+  assert.deepEqual(ids(r), []);
+  const loads = await siteScan("shop.example", { fetcher: launchSite({ page: '<link rel="stylesheet" href="http://cdn.other.example/a.css">', dns: GOOD_DNS }).fetcher });
+  assert.deepEqual(ids(loads), ["launch:mixed"]);
+  const httpOnly = async (url) => ({ status: 200, url, headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript", "content-security-policy": "frame-ancestors 'none'" }), text: async () => (new URL(url).pathname === "/" ? '<a href="/privacy">p</a><script src="/a.js"></script>' : "1") });
+  // Typed as http, and https answers too: the gap is the missing redirect, the same finding as typing the bare name.
+  const both = await siteScan("http://shop.vercel.app", { fetcher: httpOnly });
+  assert.ok(ids(both).includes("launch:no-https-redirect") && !ids(both).includes("launch:no-https"));
+  // No https at all.
+  const noHttps = async (url, o) => (url.startsWith("https://shop.vercel.app") ? { status: 0, url, headers: new Headers(), text: async () => "" } : httpOnly(url, o));
+  const off = async (url) => { if (url.startsWith("https://shop.vercel.app")) throw new Error("connect refused"); return httpOnly(url); };
+  const plain = await siteScan("http://shop.vercel.app", { fetcher: off });
+  assert.ok(ids(plain).includes("launch:unchecked") || ids(plain).includes("launch:no-https"));
+  const refused = async (url) => (url.startsWith("https://shop.vercel.app") ? { status: 526, url, headers: new Headers(), text: async () => "" } : httpOnly(url));
+  assert.equal((await siteScan("http://shop.vercel.app", { fetcher: refused })).findings.find((f) => f.id === "launch:no-https").severity, "high");
+  assert.ok(noHttps);
+});
+
+test("domains: the owner's domain is found on country domains, and shared hosts are nobody's to fix", async () => {
+  const seen = [];
+  const fetcher = (host) => async (url, opts) => {
+    const u = new URL(url);
+    if (u.hostname === "cloudflare-dns.com") seen.push(u.searchParams.get("name"));
+    return launchSite({}).fetcher(url, opts);
+  };
+  for (const host of ["shop.ne.jp", "app.shop.or.jp", "shop.me.uk", "www.shop.com.au"]) await siteScan(host, { fetcher: fetcher(host) });
+  assert.deepEqual([...new Set(seen)].sort(), ["_dmarc.shop.com.au", "_dmarc.shop.me.uk", "_dmarc.shop.ne.jp", "_dmarc.shop.or.jp", "shop.com.au", "shop.me.uk", "shop.ne.jp", "shop.or.jp"]);
+  seen.length = 0;
+  for (const host of ["myapp.herokuapp.com", "myapp.azurewebsites.net", "myapp.v0.app"]) assert.ok(ids(await siteScan(host, { fetcher: fetcher(host) })).includes("domain:builder"));
+  assert.deepEqual(seen, [], "no DNS lookups for a host the owner doesn't control");
+});
+
+test("coverage: another tenant's script on a shared host, or an odd port, is not the app's own", async () => {
+  const calls = [];
+  const fetcher = async (url) => {
+    calls.push(url);
+    const u = new URL(url);
+    return { status: 200, url: url.replace("http://", "https://"), headers: new Headers({ "content-type": u.pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (u.pathname === "/" ? '<a href="/privacy">p</a><script src="https://other.lovable.app/x.js"></script><script src="https://mine.lovable.app:8443/y.js"></script><script src="https://ec2-1-2-3-4.compute-1.amazonaws.com/z.js"></script><script src="/a.js"></script>' : "1") };
+  };
+  const r = await siteScan("mine.lovable.app", { fetcher });
+  assert.equal(r.scripts, 1);
+  assert.ok(!calls.some((c) => /other\.lovable|:8443|amazonaws/.test(c)));
+});
+
+test("--mine: the key names the real project, a refused key is said, and a table that times out is not called closed", async () => {
+  const realRef = "abcdefghijklmnopqrst";
+  const script = `const old="https://zzzzzzzzzzzzzzzzzzzz.supabase.co";${client}db.from("profiles");db.from("events");`;
+  const calls = [];
+  const make = ({ settings = 200, events = 503 } = {}) => async (url, opts = {}) => {
+    calls.push(url);
+    const r = (status, body = "", headers = {}) => ({ status, url, headers: new Headers(headers), text: async () => body });
+    if (url.startsWith("http://")) return r(200, "");
+    if (url.includes(".supabase.co")) {
+      if (!url.startsWith(`https://${realRef}.supabase.co`)) return r(401);
+      const path = new URL(url).pathname;
+      if (path === "/auth/v1/settings") return r(settings, "{}");
+      if (path === "/rest/v1/profiles") return new URL(url).searchParams.get("select") === "*" ? r(206, "", { "content-range": "0-0/999" }) : r(400);
+      if (path === "/rest/v1/events") return r(events);
+      return r(path === "/rest/v1/" ? 401 : 404);
+    }
+    return { status: 200, url, headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (new URL(url).pathname === "/" ? '<script src="/a.js"></script>' : script) };
+  };
+  const r = await siteScan("app.example", { fetcher: make(), mine: true });
+  assert.ok(ids(r).includes("supabase:table:profiles"), "the old address in the code didn't win");
+  assert.ok(!calls.some((c) => c.includes("zzzzzzzz") && c.includes("/rest/")));
+  assert.match(r.findings.find((f) => f.id === "db:tables-untested").why, /events/);
+  assert.equal(r.supabase.tablesTested, 1);
+  const refused = await siteScan("app.example", { fetcher: make({ settings: 401 }), mine: true });
+  assert.ok(ids(refused).includes("db:key-rejected") && !ids(refused).includes("supabase:table:profiles"));
+  assert.equal(refused.supabase.checked, false);
+  assert.match(refused.verdict, /weren't checked/);
+});
+
+// --- second review (10 November 2026): bugs the first round of fixes introduced ---
+test("keys: a real password with odd characters, or a weak one, is still a leak", async () => {
+  for (const leak of [
+    "postgresql://postgres:Tr0ub4dor$3xQ@db.abcdefghijklmnopqrst.supabase.co:5432/postgres",
+    "postgres://app:postgres@db.examplecorp.io:5432/app",
+    "mysql://root:12345678@mysql.prodhost.io/shop",
+    "postgres://your-team:p{ss}w[o]rd<1>@pg.prodhost.io/db",
+  ]) {
+    const r = await siteScan("shop.example", { fetcher: launchSite({ script: `const u="${leak}";`, dns: GOOD_DNS }).fetcher });
+    assert.deepEqual(ids(r), ["secret:database-url"], leak);
+  }
+  const twilio = await siteScan("shop.example", { fetcher: launchSite({ script: `const c={sid:"AC${"4f9a07c2e81b3d65".repeat(2)}"};const t="${"b7e2049c5a1f83d6".repeat(2)}";`, dns: GOOD_DNS }).fetcher });
+  assert.deepEqual(ids(twilio), ["secret:twilio"]);
+});
+
+test("--mine: an estimated row count is not proof that rows are readable", async () => {
+  const make = (planned) => async (url, opts = {}) => {
+    const r = (status, headers = {}) => ({ status, url, headers: new Headers(headers), text: async () => "{}" });
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
+    if (url.startsWith(SB)) {
+      const u = new URL(url);
+      if (u.pathname === "/rest/v1/profiles") {
+        if (u.searchParams.get("select") !== "*") return r(200);
+        return /exact/.test(opts.headers?.prefer || "") ? r(500) : r(200, { "content-range": planned });
+      }
+      return r(u.pathname === "/auth/v1/settings" ? 200 : 404);
+    }
+    return { status: 200, url, headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (new URL(url).pathname === "/" ? '<script src="/a.js"></script>' : `${client}db.from("profiles");`) };
+  };
+  const closed = await siteScan("app.example", { fetcher: make("*/48213"), mine: true });
+  assert.ok(!ids(closed).some((id) => id.startsWith("supabase:table:")), "a protected big table is not reported as open");
+  assert.equal(closed.supabase.tablesTested, 1);
+  const open = await siteScan("app.example", { fetcher: make("0-0/48213"), mine: true });
+  const f = open.findings.find((x) => x.id === "supabase:table:profiles");
+  assert.equal(f.severity, "critical");
+  assert.match(f.title, /can read rows of "profiles"/, "the estimate is not quoted as a row count");
+});
+
+test("--mine: the first key in the code is the app's, other projects are named, and an untested table qualifies the verdict", async () => {
+  const stale = `${b64({ alg: "HS256" })}.${b64({ iss: "supabase", ref: "zzzzzzzzzzzzzzzzzzzz", role: "anon" })}.${"s".repeat(20)}`;
+  const script = `${client}db.from("profiles");db.from("events");const legacy={u:"https://zzzzzzzzzzzzzzzzzzzz.supabase.co",k:"${stale}"};`;
+  const calls = [];
+  const fetcher = async (url) => {
+    calls.push(url);
+    const r = (status, headers = {}) => ({ status, url, headers: new Headers(headers), text: async () => "{}" });
+    if (url.startsWith("http://")) return { status: 200, url: url.replace("http://", "https://"), headers: new Headers(), text: async () => "" };
+    if (url.includes(".supabase.co")) {
+      const u = new URL(url);
+      if (u.pathname === "/rest/v1/profiles") return r(401);
+      if (u.pathname === "/rest/v1/events") return r(503);
+      return r(u.pathname === "/auth/v1/settings" ? 200 : 404);
+    }
+    return { status: 200, url, headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (new URL(url).pathname === "/" ? '<script src="/a.js"></script>' : script) };
+  };
+  const r = await siteScan("app.example", { fetcher, mine: true });
+  assert.ok(calls.some((c) => c.startsWith(SB + "/rest/v1/profiles")) && !calls.some((c) => c.includes("zzzzzzzz")), "the real project was tested, the leftover one wasn't touched");
+  assert.match(r.findings.find((f) => f.id === "db:several-projects").why, /zzzzzzzzzzzzzzzzzzzz/);
+  assert.equal(r.supabase.tablesUntested, 1);
+  assert.match(r.verdict, /Some database tables couldn't be checked/);
+});
+
+test("domains: ordinary names that look like suffixes stay whole, and keep their own scripts", async () => {
+  const seen = [];
+  const fetcher = async (url) => {
+    const u = new URL(url);
+    if (u.hostname === "cloudflare-dns.com") return (seen.push(u.searchParams.get("name")), { status: 200, url, headers: new Headers(), text: async () => JSON.stringify({ Status: 0, Answer: [{ type: 16, data: '"v=DMARC1; p=none"' }] }) });
+    return { status: 200, url: url.replace("http://", "https://"), headers: new Headers({ "content-type": u.pathname === "/" ? "text/html" : "application/javascript" }), text: async () => (u.pathname === "/" ? '<a href="/privacy">p</a><script src="https://static.web.de/app.js"></script>' : "1") };
+  };
+  const r = await siteScan("www.web.de", { fetcher });
+  assert.equal(r.scripts, 1, "static.web.de belongs to web.de");
+  for (const host of ["app.id.me", "www.ad.nl", "shop.art.co", "shop.web.za", "shop.com.co"]) await siteScan(host, { fetcher });
+  assert.deepEqual([...new Set(seen.filter((n) => n.startsWith("_dmarc.")))].sort(), ["_dmarc.ad.nl", "_dmarc.art.co", "_dmarc.id.me", "_dmarc.shop.com.co", "_dmarc.shop.web.za", "_dmarc.web.de"]);
+});
+
+test("names: per-user tables are personal, shared lists of kinds are not", async () => {
+  const tables = { user_settings: 5, account_status: 5, waitlist: 5, clients: 5, subscription_plans: 5, order_types: 5 };
+  const r = await siteScan("app.example", { fetcher: modernSupabase(tables, client + Object.keys(tables).map((t) => `db.from("${t}");`).join("")).fetcher, mine: true });
+  const level = (t) => r.findings.find((f) => f.id === `supabase:table:${t}`).severity;
+  for (const t of ["user_settings", "account_status", "waitlist", "clients"]) assert.equal(level(t), "critical", t);
+  for (const t of ["subscription_plans", "order_types"]) assert.equal(level(t), "medium", t);
+});
+
+// --- third review (10 November 2026) ---
+test("keys: documentation keys and input-field hints are not leaks, real keys next to them still are", async () => {
+  const hints = [
+    "postgres://postgres:your-super-secret-and-long-postgres-password@db.abcdefghijklmnopqrst.supabase.co:5432/postgres",
+    "postgresql://postgres:YOUR_PASSWORD_HERE@db.abcdefghijklmnopqrst.supabase.co/postgres",
+    "mysql://root:example-password@mysql.prodhost.io/shop",
+    "postgres://user:%PASSWORD%@pg.prodhost.io/db",
+    "AKI\u0041IOSFODNN7EXAMPLE",
+    "sk-\u0061nt-api03-your-api-key-here",
+    "sk-\u0070roj-your-openai-api-key-here",
+    "xox\u0062-your-bot-token-here",
+    "github_\u0070at_your_personal_access_token",
+    "S\u0047.your_sendgrid_api_key_here.put_the_rest_of_the_key_here",
+    "sb_\u0073ecret_your_service_role_key_here",
+  ];
+  const quiet = await siteScan("shop.example", { fetcher: launchSite({ script: hints.map((h, i) => `const h${i}="${h}";`).join(""), dns: GOOD_DNS }).fetcher });
+  assert.deepEqual(ids(quiet), []);
+  for (const real of ["AKI\u0041Z7QW3RT8YH2KLM9P", "postgresql://postgres:Tr0ub4dor$3xQ@db.abcdefghijklmnopqrst.supabase.co:5432/postgres", "postgres://app:password123@pg.prodhost.io/db"])
+    assert.equal((await siteScan("shop.example", { fetcher: launchSite({ script: `const a="AKI\u0041IOSFODNN7EXAMPLE";const k="${real}";`, dns: GOOD_DNS }).fetcher })).grade, "F", real);
+});
+
+test("domains: www.gov.uk is gov.uk's own site, and Austrian second levels are known", async () => {
+  const seen = [];
+  const fetcher = async (url, opts) => {
+    const u = new URL(url);
+    if (u.hostname === "cloudflare-dns.com") seen.push(u.searchParams.get("name"));
+    return launchSite({}).fetcher(url, opts);
+  };
+  for (const host of ["www.gov.uk", "app.shop.or.at", "www.shop.co.uk"]) await siteScan(host, { fetcher });
+  assert.deepEqual([...new Set(seen.filter((n) => n.startsWith("_dmarc.")))].sort(), ["_dmarc.gov.uk", "_dmarc.shop.co.uk", "_dmarc.shop.or.at"]);
+});
+
+test("launch: typed http where https only bounces back to http is the serious case; a 403 over https still means https exists", async () => {
+  const base = (url) => ({ status: 200, url, headers: new Headers({ "content-type": new URL(url).pathname === "/" ? "text/html" : "application/javascript", "content-security-policy": "frame-ancestors 'none'" }), text: async () => (new URL(url).pathname === "/" ? '<a href="/privacy">p</a><script src="/a.js"></script>' : "1") });
+  const bounce = async (url) => (url.startsWith("https://shop.vercel.app") ? base(url.replace("https://", "http://")) : base(url));
+  assert.ok(ids(await siteScan("http://shop.vercel.app", { fetcher: bounce })).includes("launch:no-https"));
+  const forbidden = async (url) => (url.startsWith("https://shop.vercel.app") ? { ...base(url), status: 403 } : base(url));
+  const r = await siteScan("http://shop.vercel.app", { fetcher: forbidden });
+  assert.ok(ids(r).includes("launch:no-https-redirect") && !ids(r).includes("launch:no-https"));
+});
+
+// --- fourth review (10 November 2026) ---
+test("keys: typed-in fake keys are not leaks; a real password that merely contains a word still is", async () => {
+  const fakes = [
+    "s\u006b-1234567890abcdef1234567890abcdef1234567890abcdef", "sk_\u006cive_1234567890abcdefghijklmn", "sk_\u006cive_abcdefghijklmnopqrstuvwx", "sk-\u0070roj-abcdefghijklmnopqrstuvwxyz123456",
+    "sk-\u0061nt-api03-abc123def456ghi789jkl", "gh\u0070_1234567890abcdefghijklmnopqrstuvwxyz", "AKI\u00411234567890ABCDEF", "whse\u0063_1234567890abcdefghijklmnop",
+    "xox\u0062-123456789012-1234567890123-abcdefghijklmnopqrstuvwx", "sk-\u0070roj-REPLACE_WITH_REAL_KEY_VALUE", "sk-\u0061nt-api03-replace-with-real-key", "sb_\u0073ecret_REPLACE_ME_REPLACE_ME_REPLACE",
+    "gh\u0070_YourGitHubPersonalAccessTokenHere12", "sk_\u006cive_YourStripeSecretKeyGoesHere", "postgres://postgres:REPLACE_ME@db.myhost.io", "postgres://postgres:DB_PASSWORD@db.myhost.io",
+    "postgres://user:••••••••@db.myhost.io", "postgres://postgres:insert-password@db.myhost.io",
+  ];
+  fakes.push('{"type": "service_account", "project_id": "your-project-id", "private_key_id": "key-id", "private_key": "-----BEGIN PRIV\u0041TE KEY-----\\nYOUR_PRIVATE_KEY_HERE\\n-----END PRIVATE KEY-----\\n"}'.replace(/"/g, "'"));
+  for (const fake of fakes) assert.deepEqual(ids(await siteScan("shop.example", { fetcher: launchSite({ script: `const k="${fake}";`, dns: GOOD_DNS }).fetcher })), [], fake);
+  const reals = [
+    "postgres://app:Example123!@db.shop.io/app", "postgres://app:Summer2024!@db.shop.io/app", "postgres://app:mysecretpassword@db.shop.io/app",
+    "sk_\u006cive_51NqX8aLk2mVp9RtY4wZc7HbD", "sk-\u0061nt-api03-Qm8xT2vLp9Rk4Wz7YbN3cJ6hF1dG5sA0", "gh\u0070_R7kQ2mX9vT4pL8wZ3yB6nJ1cH5dG0sFaE2uY", "AKI\u0041Z7QW3RT8YH2KLM9P", "whse\u0063_Xk29LmQp84ZrTv61YwBn37HcJd50",
+  ];
+  for (const real of reals) assert.equal((await siteScan("shop.example", { fetcher: launchSite({ script: `const k="${real}";`, dns: GOOD_DNS }).fetcher })).grade, "F", real);
 });

@@ -9,5 +9,6 @@ export const httpProbe = (url, timeout = 6000) =>
       resolve({ status: res.statusCode, location: res.headers.location || "" });
     });
     req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve({ status: 0, location: "" }));
+    // A refused connection means nothing listens on plain http: reported as -1. Anything else is "no answer".
+    req.on("error", (e) => resolve({ status: e.code === "ECONNREFUSED" ? -1 : 0, location: "" }));
   });

@@ -29,17 +29,31 @@ const BY_LEVEL = { ERROR: "high", WARN: "medium", INFO: "low" };
 const ORDER = ["critical", "high", "medium", "low", "info"];
 
 export function fromAdvisor(input) {
-  const raw = typeof input === "string" ? JSON.parse(input) : input;
-  const lints = Array.isArray(raw) ? raw : raw?.lints || raw?.result?.lints || raw?.result || raw?.data || [];
-  if (!Array.isArray(lints)) throw new Error("that doesn't look like Supabase advisor output (expected a list of lints)");
+  let raw = input;
+  if (typeof input === "string") {
+    try {
+      raw = JSON.parse(input);
+    } catch {
+      throw new Error("that isn't JSON. Pass the advisor's results as exported: a list of lints.");
+    }
+  }
+  const lints = [raw, raw?.lints, raw?.result?.lints, raw?.result, raw?.data?.lints, raw?.data].find(Array.isArray);
+  // An error message or an empty object is not "the advisor found nothing".
+  if (!lints) throw new Error(`that doesn't look like Supabase advisor output (expected a list of lints)${raw?.message || raw?.error ? `. It says: ${String(raw.message || raw.error).slice(0, 120)}` : ""}`);
   const findings = [];
   const seen = new Set();
+  let skipped = 0;
   for (const l of lints) {
-    if (!l || typeof l !== "object" || !l.name) continue;
+    if (!l || typeof l !== "object" || !(l.name || l.title)) {
+      skipped++;
+      continue;
+    }
+    const lint = l.name || String(l.title).toLowerCase().replace(/[^a-z0-9]+/g, "_");
     const speed = (l.categories || []).includes("PERFORMANCE") && !(l.categories || []).includes("SECURITY");
     const t = thing(l);
-    const k = KNOWN[l.name];
-    const id = `advisor:${l.name}:${t}`;
+    const k = KNOWN[lint];
+    // Two policies on one table, or one table name in two schemas, are separate results.
+    const id = `advisor:${lint}:${l.cache_key || `${l.metadata?.schema || ""}.${t}:${l.detail || ""}`}`.slice(0, 200);
     if (seen.has(id)) continue;
     seen.add(id);
     const severity = k ? k[0] : speed ? "low" : BY_LEVEL[l.level] || "low";
@@ -48,8 +62,9 @@ export function fromAdvisor(input) {
     const prompt = `Supabase's ${speed ? "Performance" : "Security"} Advisor reports "${l.title || l.name}" for ${t}. ${l.detail ? `${clean(l.detail)} ` : ""}Fix it${l.remediation ? ` following ${l.remediation}` : ""}. Don't loosen or remove any existing policy, keep each user limited to their own rows, and show me the SQL you ran. If fixing it could break a feature of the app, tell me which before you change anything.`;
     findings.push({ id, severity, where: speed ? "Supabase Performance Advisor" : "Supabase Security Advisor", title, why, fix: l.remediation || "See Supabase → Advisors.", first: null, prompt });
   }
+  if (lints.length && skipped === lints.length) throw new Error("none of those items look like advisor results (each should have a name or a title)");
   findings.sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity));
-  return { source: "Supabase advisor", lints: lints.length, findings };
+  return { source: "Supabase advisor", lints: lints.length, skipped, findings };
 }
 
 // The words an agent or a person needs to get the advisor output in the first place.
