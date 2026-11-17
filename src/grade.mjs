@@ -306,7 +306,7 @@ const P = {
 };
 
 // --- the check -----------------------------------------------------------------------------------
-export async function siteScan(target, { mine = false, fetcher = fetch, maxScripts = 400, maxBytes = 8 * 1024 * 1024, maxTotalBytes = 200 * 1024 * 1024, deadlineMs = 120000, scriptTimeoutMs = 15000, pageTimeoutMs = 15000, tailMs = 20000, httpProbe = null, wantPage = false } = {}) {
+export async function siteScan(target, { mine = false, fetcher = fetch, maxScripts = 400, maxBytes = 8 * 1024 * 1024, maxTotalBytes = 200 * 1024 * 1024, deadlineMs = 120000, scriptTimeoutMs = 15000, pageTimeoutMs = 15000, tailMs = 20000, httpProbe = null, wantPage = false, wantPlan = false } = {}) {
   const deadline = Date.now() + deadlineMs;
   const fetchOpts = (o = {}) => ({ max: maxBytes, ...o, fetcher });
   const url = safeUrl(/^https?:\/\//i.test(String(target).trim()) ? String(target).trim() : `https://${String(target).trim()}`);
@@ -456,7 +456,7 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     add({ id: "db:several-projects", severity: "info", where: "Supabase", title: `Your code mentions ${supabaseRefs.size} Supabase projects`, why: `Greenlit looked at the one whose key comes first in your code (${supabase.ref}). The others (${[...supabaseRefs].filter((r) => r !== supabase.ref).slice(0, 4).join(", ")}) weren't checked. If one of them is the live database, this result doesn't cover it.`, fix: "Remove old project addresses and keys from the app, then check again.", first: null, prompt: null });
   const database = supabase?.url && supabase.anon ? "Supabase" : firebase?.project ? "Firebase" : null;
   if (database && !mine)
-    add({ id: "db:skipped", severity: "info", where: database, title: `Your ${database} database wasn't checked`, why: `This app uses ${database}. Greenlit can check which of its data anyone on the internet can read, but only on your own computer, for an app you own.`, fix: `Run \`npx greenlitlab ${url.host} --mine\` if this is your app.`, first: null, prompt: null, checkPrompt: P.dbCheck(database) });
+    add({ id: "db:skipped", severity: "info", where: database, title: `Your ${database} database wasn't checked`, why: `This app uses ${database}. Greenlit can check which of its data anyone on the internet can read, but only for an app you own: on greenlit.priberry.com after adding a tag, or on your own computer, for an app you own.`, fix: `Run \`npx greenlitlab ${url.host} --mine\` if this is your app.`, first: null, prompt: null, checkPrompt: P.dbCheck(database) });
   if (unread || cut)
     add({ id: "coverage:partial", severity: "info", where: "your app's scripts", title: unread ? `${unread} of this app's scripts weren't read` : "Some of this app's scripts were too big to read to the end", why: `Greenlit read ${bundles.length - 1} scripts, but couldn't get through the rest in one check. A problem in those wouldn't show up here.`, fix: `Run \`npx greenlitlab ${url.host}\` on your computer, which reads them all.`, first: null, prompt: null });
   if (noCodeRead)
@@ -469,7 +469,6 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
   let tablesListed = false;
   let tablesUntested = 0;
   let keyRejected = false;
-  let authSettings = null;
   // Database functions the app calls. Listed for the owner, never called: calling one runs it.
   const functions = new Set();
   const bucketsInCode = new Set();
@@ -487,140 +486,13 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
   const supabasePartial = Boolean(supabase && !(supabase.url && supabase.anon) && !firebase?.project);
   if (supabasePartial)
     add({ id: "db:not-found", severity: "info", where: "Supabase", title: "This app seems to use Supabase, but its database wasn't checked", why: "Greenlit found signs of Supabase but not both its address and its public key in the code it read, so it couldn't test anything. The app may reach its database through its own server, which is the safer design, or the key may be in code that wasn't read.", fix: "Open Supabase → Advisors → Security Advisor: it lists every table and function that strangers can reach.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
-  if (mine && supabase?.url && supabase.anon) {
-    // The newer sb_publishable_ keys aren't JWTs and go in the apikey header only.
-    const h = { apikey: supabase.anon, ...(supabase.anon.startsWith("eyJ") && { authorization: `Bearer ${supabase.anon}` }) };
-    const names = new Set();
-    // Older projects still answer this with the list of tables; newer ones refuse the public key.
-    const api = await get(`${supabase.url}/rest/v1/`, fetchOpts({ headers: h }));
-    try {
-      for (const p of Object.keys(JSON.parse(api.text).paths || {})) if (p.slice(1) && !p.startsWith("/rpc/")) names.add(p.slice(1));
-    } catch {}
-    tablesListed = names.size > 0;
-    for (const b of bundles) for (const m of b.text.matchAll(TABLE_REF)) (m[1] || m[2]) !== "rpc" && names.add(m[1] || m[2]);
-    tables = [];
-    // Does Supabase accept this key at all? If not, every table would answer "no access" and look tested.
-    authSettings = await get(`${supabase.url}/auth/v1/settings`, fetchOpts({ headers: h, max: 65536 }));
-    keyRejected = authSettings.status === 401 || authSettings.status === 403;
-    const untested = [];
-    const head = (t, prefer) => get(`${supabase.url}/rest/v1/${encodeURIComponent(t)}?select=*`, fetchOpts({ method: "HEAD", headers: { ...h, range: "0-0", ...(prefer && { prefer }) } }));
-    for (const t of keyRejected ? [] : [...names].slice(0, 120)) {
-      // A HEAD request with a count returns how many rows are visible, and no rows. An exact count can time out on a
-      // big table, so an estimate is asked for next: the biggest tables are the ones that matter most.
-      let r = await head(t, "count=exact");
-      const estimated = !r.status || r.status >= 500;
-      if (estimated) r = await head(t, "count=planned");
-      // "Not found" means the name wasn't a table. No answer means it wasn't tested, and is said so below.
-      if (r.status === 404) continue;
-      if (!r.status || r.status >= 500) {
-        untested.push(t);
-        continue;
-      }
-      tablesTested++;
-      const range = r.headers?.get("content-range") || "";
-      const n = Number(range.split("/")[1]);
-      // An exact count above zero means rows are visible. An estimate is only the database's guess at the table's size,
-      // so there the proof is a returned row: a range like "0-0/…", not "*/…".
-      const rowCame = /^\d+-\d+\//.test(range);
-      if (r.status < 300 && (estimated ? rowCame : n > 0 || rowCame)) tables.push({ table: t, rows: !estimated && n > 0 ? n : null });
-    }
-    if (names.size > 120) untested.push(`${names.size - 120} more names`);
-    tablesUntested = untested.length;
-    // A check that tested no tables must say so, not report "nothing open".
-    dbBlind = tablesTested === 0;
-    if (keyRejected)
-      add({ id: "db:key-rejected", severity: "info", where: "Supabase", title: "Supabase turned down the public key Greenlit found, so the database wasn't checked", why: "The key in your app's code was refused. It may be an old key, or belong to a different project than the address next to it. Nothing about your tables, storage or sign-up could be tested.", fix: "Check that the live app uses your current Supabase address and publishable key, then run this again.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
-    else if (dbBlind && !untested.length)
-      add({ id: "db:no-tables", severity: "info", where: "Supabase", title: "Your database tables weren't checked", why: "Greenlit couldn't find any of your table names in the code it read, and Supabase no longer lists them for the public key. So it couldn't test which tables strangers can read. Storage and sign-up settings were still checked.", fix: "Open Supabase → Advisors → Security Advisor: it lists every table that strangers can reach.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
-    if (untested.length)
-      add({ id: "db:tables-untested", severity: "info", where: "Supabase", title: `${untested.length} table${untested.length > 1 ? "s" : ""} couldn't be tested`, why: `Supabase didn't answer for: ${untested.slice(0, 12).join(", ")}${untested.length > 12 ? " and more" : ""}. A very large table can time out when counted, and those are the ones that matter most, so don't read this as "closed".`, fix: "Open Supabase → Advisors → Security Advisor to see whether these tables are protected.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
-    // For tables strangers can read: which hold personal or secret data? Asks whether a column exists, never for its values.
-    for (const t of tables.slice(0, 40)) {
-      t.sensitive = [];
-      for (const c of [...SECRET_COLUMNS, ...CONTACT_COLUMNS]) {
-        const r = await get(`${supabase.url}/rest/v1/${encodeURIComponent(t.table)}?select=${c}`, fetchOpts({ method: "HEAD", headers: { ...h, range: "0-0" } }));
-        if (r.status === 200 || r.status === 206) t.sensitive.push(c);
-      }
-    }
-    for (const { table, rows, sensitive = [] } of tables) {
-      // Critical when the name or a secret column says it's about people or credentials; an email column alone is serious
-      // but can be a public directory; anything else may be meant to be public.
-      const personal = isPersonal(table) || sensitive.some((c) => SECRET_COLUMNS.includes(c));
-      const level = personal ? "critical" : sensitive.includes("email") ? "high" : "medium";
-      const count = rows ? `${rows.toLocaleString("en-US")} row${rows > 1 ? "s" : ""}` : "rows";
-      const why = personal
-        ? "The anon key is public (it ships in your app), so a table without Row Level Security is readable by everyone. This is how most vibe-coded apps have leaked data."
-        : "The anon key is public (it ships in your app). If this table is meant to be public, like a product list, reading it is fine, but make sure strangers can't change it. If it isn't, it's leaking.";
-      add({ id: `supabase:table:${table}`, severity: level, where: `Supabase table "${table}"`, title: `Anyone on the internet can read ${count} of "${table}"${sensitive.length ? `, including ${sensitive.slice(0, 4).join(", ")}` : ""}`, why, fix: `In Supabase, open Table Editor → ${table} → turn on RLS, then add a policy so people read only their own rows (for example: auth.uid() = user_id).`, ...P.rls(table, personal) });
-    }
-  }
-
-  // Your own app only: files that should never be on a live site. A real .env has KEY=value lines; a real .git
-  // folder has a config file with [core]. Anything else (often the home page served for every path) doesn't count.
-  if (mine) {
-    for (const path of ["/.env", "/.env.local", "/.env.production"]) {
-      const r = await get(new URL(path, origin).href, fetchOpts({ max: 4096 }));
-      if (r.status === 200 && !/^\s*</.test(r.text) && /^[A-Z][A-Z0-9_]*=/m.test(r.text)) {
-        add({ id: `exposed:${path}`, severity: "critical", where: path, title: `Your ${path} file is public`, why: "This file usually holds every secret key the app uses, and anyone can download it.", fix: `Stop deploying ${path}, then revoke every key it contained.`, ...P.envFile(path) });
-        break;
-      }
-    }
-    const g = await get(new URL("/.git/config", origin).href, fetchOpts({ max: 4096 }));
-    if (g.status === 200 && /\[core\]/.test(g.text))
-      add({ id: "exposed:git", severity: "high", where: "/.git/", title: "Your code history (.git folder) is public", why: "Anyone can download your full source code and every past version of it, including keys that were committed once and later removed.", fix: "Deploy only the build output, never the .git folder.", ...P.gitDir() });
-  }
-
-  // Your own app only: Supabase settings that quietly make "signed-in users only" mean "anyone".
-  if (mine && supabase?.url && supabase.anon && !keyRejected) {
-    const h = { apikey: supabase.anon, ...(supabase.anon.startsWith("eyJ") && { authorization: `Bearer ${supabase.anon}` }) };
-    const st = authSettings;
-    try {
-      const cfg = JSON.parse(st.text);
-      if (st.status === 200 && cfg.disable_signup === false && cfg.mailer_autoconfirm === true)
-        add({ id: "supabase:open-signup", severity: "high", where: "Supabase Auth settings", title: "Anyone can sign up with any email, without confirming it", why: "Rules that only check \"is the user signed in?\" protect nothing: a stranger can make an account in seconds, even with someone else's email address.", fix: "Turn on email confirmation in Supabase Auth, and make every policy check who owns the row, not just that someone is signed in.", ...P.signup() });
-    } catch {}
-    // Storage: which common buckets list their files to anyone? Asks for one file name, never the file.
-    for (const bucket of [...new Set(["avatars", "uploads", "files", "documents", "images", "attachments", "receipts", "invoices", "private", ...bucketsInCode])].slice(0, 24)) {
-      const r = await get(`${supabase.url}/storage/v1/object/list/${encodeURIComponent(bucket)}`, fetchOpts({ method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ prefix: "", limit: 1, offset: 0 }), max: 65536 }));
-      let n = 0;
-      try {
-        n = Array.isArray(JSON.parse(r.text)) ? JSON.parse(r.text).length : 0;
-      } catch {}
-      if (r.status === 200 && n > 0)
-        add({ id: `supabase:storage:${bucket}`, severity: /receipt|invoice|document|private|attachment/.test(bucket) ? "critical" : "high", where: `Supabase storage bucket "${bucket}"`, title: `Anyone can list the files in the storage bucket "${bucket}"`, why: "Strangers can see every file name in it and, if the files are readable too, download them. Greenlit asked for one file name and opened nothing.", fix: `In Supabase → Storage → Policies, limit "${bucket}" so users list and read only their own files.`, ...P.storage(bucket) });
-    }
-  }
-
-  // Firebase: is the Realtime Database or a common Firestore collection open to anyone?
+  // The database checks live in dbScan below, so the website can run them in rounds (see functions/api/owner.js).
   let firebaseOpen = null;
-  if (mine && firebase?.project) {
-    firebaseOpen = [];
-    if (firebase.db) {
-      // shallow=true returns only the top-level key names, each mapped to true; we count them and drop them.
-      const r = await get(`${firebase.db}/.json?shallow=true`, fetchOpts());
-      let keys = 0;
-      try {
-        const v = JSON.parse(r.text);
-        keys = v && typeof v === "object" ? Object.keys(v).length : v != null ? 1 : 0;
-      } catch {}
-      if (r.status === 200 && keys > 0) {
-        firebaseOpen.push({ where: "Realtime Database", keys });
-        add({ id: "firebase:rtdb", severity: "critical", where: "Firebase Realtime Database", title: "Anyone on the internet can read your Firebase Realtime Database", why: `Its rules let visitors who aren't signed in read it (${keys} top-level ${keys > 1 ? "branches" : "branch"} visible). Everything under them is open.`, fix: "In Firebase → Realtime Database → Rules, require sign-in and limit each user to their own data.", ...P.rtdb() });
-      }
-    }
-    for (const coll of FIRESTORE_GUESSES) {
-      // pageSize=1 and a mask on a field that doesn't exist: at most one document name comes back, no fields.
-      const q = `pageSize=1&mask.fieldPaths=__greenlit_none${firebase.key ? `&key=${firebase.key}` : ""}`;
-      const r = await get(`https://firestore.googleapis.com/v1/projects/${firebase.project}/databases/(default)/documents/${coll}?${q}`, fetchOpts());
-      let n = 0;
-      try {
-        n = (JSON.parse(r.text).documents || []).length;
-      } catch {}
-      if (r.status === 200 && n > 0) {
-        firebaseOpen.push({ where: `Firestore "${coll}"` });
-        add({ id: `firebase:firestore:${coll}`, severity: isPersonal(coll) ? "critical" : "high", where: `Firestore collection "${coll}"`, title: `Anyone on the internet can read the Firestore collection "${coll}"`, why: "Your Firestore rules let visitors who aren't signed in read it. Greenlit asked for one document name and no fields; a stranger would take everything.", fix: `In Firebase → Firestore → Rules, close "${coll}" to everyone except its owner.`, ...P.firestore(coll) });
-      }
-    }
+  const plan = dbPlan({ origin, supabase, firebase, bundles, bucketsInCode });
+  if (mine) {
+    const d = await dbScan(plan, { fetcher, maxBytes });
+    for (const f of d.findings) add(f);
+    ({ tables, tablesTested, dbBlind, tablesListed, tablesUntested, keyRejected, firebaseOpen } = d.stats);
   }
 
   // --- launch basics: things that stop a live app working, read from what was already downloaded ---
@@ -737,6 +609,31 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
       add({ id: "framing", severity: "low", where: "response headers", title: "Other sites can put your app in a frame", why: "A malicious page can show your app inside an invisible frame and trick your users into clicking buttons they can't see (clickjacking).", fix: "Add the header Content-Security-Policy: frame-ancestors 'self' (or X-Frame-Options: DENY).", ...P.framing() });
   }
 
+  const flags = { noCodeRead, unread, cut, tablesUntested, dbBlind, supabasePartial, database, mine };
+  const { score, grade, verdict } = gradeOf(findings, flags);
+  return {
+    url: origin,
+    builder,
+    score,
+    grade,
+    verdict,
+    mine,
+    scripts: bundles.length - 1,
+    scriptsUnread: unread,
+    supabase: supabase ? { project: supabase.ref, checked: Boolean(mine && tables && !dbBlind && !keyRejected), tablesTested, tablesUntested, tablesListed, readable: tables, functions: [...functions].slice(0, 50), edgeFunctions: [...edge].slice(0, 50) } : null,
+    firebase: firebase ? { project: firebase.project, checked: mine, readable: firebaseOpen } : null,
+    findings,
+    pasteInto: builder || "your AI app builder or coding agent",
+    // Only for the web endpoints, which look for the owner's tag in the page and run the database checks in rounds.
+    ...(wantPage && { page: page.text.slice(0, 200000) }),
+    ...(wantPlan && { plan, flags }),
+  };
+}
+
+// --- the grade -------------------------------------------------------------------------------------
+// Shared by siteScan and the website's owner check, which adds database findings to a public result and grades again.
+// Sorts `findings` worst first, in place.
+export function gradeOf(findings, { noCodeRead = false, unread = 0, cut = 0, tablesUntested = 0, dbBlind = false, supabasePartial = false, database = null, mine = false } = {}) {
   // Small things add up to 20 points at most, so missing headers alone can never fail an app.
   // One critical problem is an F whatever else is right: it can't be averaged away.
   const sum = (kinds) => findings.reduce((a, f) => a + (kinds.includes(f.severity) ? SEVERITY[f.severity] : 0), 0);
@@ -762,22 +659,227 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
         : VERDICT[grade];
   const order = ["critical", "high", "medium", "low", "info"];
   findings.sort((a, b) => order.indexOf(a.severity) - order.indexOf(b.severity));
+  return { score: ungraded ? null : score, grade, verdict };
+}
+
+// --- the database checks, for an app's owner ----------------------------------------------------------
+// What the database checks need, taken from the app's own code. Plain data, so the website can keep it between rounds.
+export function dbPlan({ origin, supabase, firebase, bundles = [], bucketsInCode = new Set() }) {
+  const codeNames = new Set();
+  if (supabase?.url && supabase.anon) for (const b of bundles) for (const m of b.text.matchAll(TABLE_REF)) (m[1] || m[2]) !== "rpc" && codeNames.add(m[1] || m[2]);
   return {
-    url: origin,
-    builder,
-    score: ungraded ? null : score,
-    grade,
-    verdict,
-    mine,
-    scripts: bundles.length - 1,
-    scriptsUnread: unread,
-    supabase: supabase ? { project: supabase.ref, checked: Boolean(mine && tables && !dbBlind && !keyRejected), tablesTested, tablesUntested, tablesListed, readable: tables, functions: [...functions].slice(0, 50), edgeFunctions: [...edge].slice(0, 50) } : null,
-    firebase: firebase ? { project: firebase.project, checked: mine, readable: firebaseOpen } : null,
-    findings,
-    pasteInto: builder || "your AI app builder or coding agent",
-    // Only for the report endpoint, which looks for the owner's tag in the page.
-    ...(wantPage && { page: page.text.slice(0, 200000) }),
+    origin,
+    supabase: supabase?.url && supabase.anon ? { url: supabase.url, anon: supabase.anon } : null,
+    firebase: firebase?.project ? { project: firebase.project, db: firebase.db || null, key: firebase.key || null } : null,
+    codeNames: [...codeNames],
+    buckets: [...new Set(["avatars", "uploads", "files", "documents", "images", "attachments", "receipts", "invoices", "private", ...bucketsInCode])].slice(0, 24),
   };
+}
+
+// Which of the owner's data anyone on the internet can read with the app's public key, plus files that should never be
+// online. Counts and names only, never data. `maxFetches` stops a round early; pass the returned `state` back to carry on
+// (the website does this, because one request there may make only about 50 fetches). With no limit it runs to the end.
+export async function dbScan(plan, { fetcher = fetch, maxBytes = 8 * 1024 * 1024, maxFetches = Infinity, state = null } = {}) {
+  const fetchOpts = (o = {}) => ({ max: maxBytes, ...o, fetcher });
+  const s = state || { step: 0, i: 0, names: null, listed: false, keyRejected: false, auth: null, tables: [], tested: 0, untested: [], open: [], findings: [], firebaseOpen: null };
+  const add = (f) => s.findings.push(f);
+  let used = 0;
+  // Each step starts only when its fetches fit in this round; a step never runs twice.
+  const room = (n) => used + n <= maxFetches;
+  const get2 = (url, o) => {
+    used++;
+    return get(url, fetchOpts(o));
+  };
+  const sb = plan.supabase;
+  const h = sb ? { apikey: sb.anon, ...(sb.anon.startsWith("eyJ") && { authorization: `Bearer ${sb.anon}` }) } : null;
+  const pause = () => ({ done: false, state: s, findings: s.findings, stats: null });
+
+  // 0: the table list (older projects still give it to the public key; newer ones refuse) and whether the key works at all.
+  if (s.step === 0) {
+    if (sb) {
+      if (!room(2)) return pause();
+      const names = new Set();
+      const api = await get2(`${sb.url}/rest/v1/`, { headers: h });
+      try {
+        for (const p of Object.keys(JSON.parse(api.text).paths || {})) if (p.slice(1) && !p.startsWith("/rpc/")) names.add(p.slice(1));
+      } catch {}
+      s.listed = names.size > 0;
+      for (const n of plan.codeNames) names.add(n);
+      s.names = [...names];
+      // Does Supabase accept this key at all? If not, every table would answer "no access" and look tested.
+      const auth = await get2(`${sb.url}/auth/v1/settings`, { headers: h, max: 65536 });
+      s.keyRejected = auth.status === 401 || auth.status === 403;
+      try {
+        const cfg = JSON.parse(auth.text);
+        s.auth = { ok: auth.status === 200, disable_signup: cfg.disable_signup, mailer_autoconfirm: cfg.mailer_autoconfirm };
+      } catch {
+        s.auth = { ok: false };
+      }
+    }
+    s.step = 1;
+    s.i = 0;
+  }
+
+  // 1: a HEAD request with a count for each table: how many rows a stranger sees, and no rows.
+  if (s.step === 1) {
+    const list = sb && !s.keyRejected ? s.names.slice(0, 120) : [];
+    const head = (t, prefer) => get2(`${sb.url}/rest/v1/${encodeURIComponent(t)}?select=*`, { method: "HEAD", headers: { ...h, range: "0-0", ...(prefer && { prefer }) } });
+    while (s.i < list.length) {
+      if (!room(2)) return pause();
+      const t = list[s.i++];
+      // An exact count can time out on a big table, so an estimate is asked for next: the biggest tables matter most.
+      let r = await head(t, "count=exact");
+      const estimated = !r.status || r.status >= 500;
+      if (estimated) r = await head(t, "count=planned");
+      // "Not found" means the name wasn't a table. No answer means it wasn't tested, and is said so below.
+      if (r.status === 404) continue;
+      if (!r.status || r.status >= 500) {
+        s.untested.push(t);
+        continue;
+      }
+      s.tested++;
+      const range = r.headers?.get("content-range") || "";
+      const n = Number(range.split("/")[1]);
+      // An exact count above zero means rows are visible. An estimate is only the database's guess at the table's size,
+      // so there the proof is a returned row: a range like "0-0/…", not "*/…".
+      const rowCame = /^\d+-\d+\//.test(range);
+      if (r.status < 300 && (estimated ? rowCame : n > 0 || rowCame)) s.tables.push({ table: t, rows: !estimated && n > 0 ? n : null, sensitive: [] });
+    }
+    if (sb && !s.keyRejected && s.names.length > 120) s.untested.push(`${s.names.length - 120} more names`);
+    if (sb) {
+      const blind = s.tested === 0;
+      if (s.keyRejected)
+        add({ id: "db:key-rejected", severity: "info", where: "Supabase", title: "Supabase turned down the public key Greenlit found, so the database wasn't checked", why: "The key in your app's code was refused. It may be an old key, or belong to a different project than the address next to it. Nothing about your tables, storage or sign-up could be tested.", fix: "Check that the live app uses your current Supabase address and publishable key, then run this again.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
+      else if (blind && !s.untested.length)
+        add({ id: "db:no-tables", severity: "info", where: "Supabase", title: "Your database tables weren't checked", why: "Greenlit couldn't find any of your table names in the code it read, and Supabase no longer lists them for the public key. So it couldn't test which tables strangers can read. Storage and sign-up settings were still checked.", fix: "Open Supabase → Advisors → Security Advisor: it lists every table that strangers can reach.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
+      if (s.untested.length)
+        add({ id: "db:tables-untested", severity: "info", where: "Supabase", title: `${s.untested.length} table${s.untested.length > 1 ? "s" : ""} couldn't be tested`, why: `Supabase didn't answer for: ${s.untested.slice(0, 12).join(", ")}${s.untested.length > 12 ? " and more" : ""}. A very large table can time out when counted, and those are the ones that matter most, so don't read this as "closed".`, fix: "Open Supabase → Advisors → Security Advisor to see whether these tables are protected.", first: null, prompt: null, checkPrompt: P.dbCheck("Supabase") });
+    }
+    s.step = 2;
+    s.i = 0;
+  }
+
+  // 2: for tables strangers can read, which hold personal or secret data? Asks whether a column exists, never for its values.
+  if (s.step === 2) {
+    const cols = [...SECRET_COLUMNS, ...CONTACT_COLUMNS];
+    const jobs = s.tables.slice(0, 40).length * cols.length;
+    while (s.i < jobs) {
+      if (!room(1)) return pause();
+      const t = s.tables[Math.floor(s.i / cols.length)];
+      const c = cols[s.i++ % cols.length];
+      const r = await get2(`${sb.url}/rest/v1/${encodeURIComponent(t.table)}?select=${c}`, { method: "HEAD", headers: { ...h, range: "0-0" } });
+      if (r.status === 200 || r.status === 206) t.sensitive.push(c);
+    }
+    for (const { table, rows, sensitive = [] } of s.tables) {
+      // Critical when the name or a secret column says it's about people or credentials; an email column alone is serious
+      // but can be a public directory; anything else may be meant to be public.
+      const personal = isPersonal(table) || sensitive.some((c) => SECRET_COLUMNS.includes(c));
+      const level = personal ? "critical" : sensitive.includes("email") ? "high" : "medium";
+      const count = rows ? `${rows.toLocaleString("en-US")} row${rows > 1 ? "s" : ""}` : "rows";
+      const why = personal
+        ? "The anon key is public (it ships in your app), so a table without Row Level Security is readable by everyone. This is how most vibe-coded apps have leaked data."
+        : "The anon key is public (it ships in your app). If this table is meant to be public, like a product list, reading it is fine, but make sure strangers can't change it. If it isn't, it's leaking.";
+      add({ id: `supabase:table:${table}`, severity: level, where: `Supabase table "${table}"`, title: `Anyone on the internet can read ${count} of "${table}"${sensitive.length ? `, including ${sensitive.slice(0, 4).join(", ")}` : ""}`, why, fix: `In Supabase, open Table Editor → ${table} → turn on RLS, then add a policy so people read only their own rows (for example: auth.uid() = user_id).`, ...P.rls(table, personal) });
+    }
+    s.step = 3;
+    s.i = 0;
+  }
+
+  // 3: files that should never be on a live site. A real .env has KEY=value lines; a real .git folder has a config file
+  // with [core]. Anything else (often the home page served for every path) doesn't count.
+  if (s.step === 3) {
+    const envs = ["/.env", "/.env.local", "/.env.production"];
+    while (s.i < envs.length) {
+      if (!room(1)) return pause();
+      const path = envs[s.i++];
+      const r = await get2(new URL(path, plan.origin).href, { max: 4096 });
+      if (r.status === 200 && !/^\s*</.test(r.text) && /^[A-Z][A-Z0-9_]*=/m.test(r.text)) {
+        add({ id: `exposed:${path}`, severity: "critical", where: path, title: `Your ${path} file is public`, why: "This file usually holds every secret key the app uses, and anyone can download it.", fix: `Stop deploying ${path}, then revoke every key it contained.`, ...P.envFile(path) });
+        s.i = envs.length;
+      }
+    }
+    if (!room(1)) return pause();
+    const g = await get2(new URL("/.git/config", plan.origin).href, { max: 4096 });
+    if (g.status === 200 && /\[core\]/.test(g.text))
+      add({ id: "exposed:git", severity: "high", where: "/.git/", title: "Your code history (.git folder) is public", why: "Anyone can download your full source code and every past version of it, including keys that were committed once and later removed.", fix: "Deploy only the build output, never the .git folder.", ...P.gitDir() });
+    s.step = 4;
+    s.i = 0;
+  }
+
+  // 4: Supabase settings that quietly make "signed-in users only" mean "anyone", then which storage buckets list their files.
+  if (s.step === 4) {
+    if (sb && !s.keyRejected) {
+      if (s.i === 0 && s.auth?.ok && s.auth.disable_signup === false && s.auth.mailer_autoconfirm === true)
+        add({ id: "supabase:open-signup", severity: "high", where: "Supabase Auth settings", title: "Anyone can sign up with any email, without confirming it", why: "Rules that only check \"is the user signed in?\" protect nothing: a stranger can make an account in seconds, even with someone else's email address.", fix: "Turn on email confirmation in Supabase Auth, and make every policy check who owns the row, not just that someone is signed in.", ...P.signup() });
+      // Asks for one file name, never the file. s.i counts from 1 so the sign-up finding above is added once.
+      if (s.i === 0) s.i = 1;
+      while (s.i - 1 < plan.buckets.length) {
+        if (!room(1)) return pause();
+        const bucket = plan.buckets[s.i++ - 1];
+        const r = await get2(`${sb.url}/storage/v1/object/list/${encodeURIComponent(bucket)}`, { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ prefix: "", limit: 1, offset: 0 }), max: 65536 });
+        let n = 0;
+        try {
+          n = Array.isArray(JSON.parse(r.text)) ? JSON.parse(r.text).length : 0;
+        } catch {}
+        if (r.status === 200 && n > 0)
+          add({ id: `supabase:storage:${bucket}`, severity: /receipt|invoice|document|private|attachment/.test(bucket) ? "critical" : "high", where: `Supabase storage bucket "${bucket}"`, title: `Anyone can list the files in the storage bucket "${bucket}"`, why: "Strangers can see every file name in it and, if the files are readable too, download them. Greenlit asked for one file name and opened nothing.", fix: `In Supabase → Storage → Policies, limit "${bucket}" so users list and read only their own files.`, ...P.storage(bucket) });
+      }
+    }
+    s.step = 5;
+    s.i = 0;
+  }
+
+  // 5: Firebase: is the Realtime Database or a common Firestore collection open to anyone?
+  if (s.step === 5) {
+    const fb = plan.firebase;
+    if (fb) {
+      s.firebaseOpen = s.firebaseOpen || [];
+      if (s.i === 0) {
+        if (fb.db) {
+          if (!room(1)) return pause();
+          // shallow=true returns only the top-level key names, each mapped to true; we count them and drop them.
+          const r = await get2(`${fb.db}/.json?shallow=true`, {});
+          let keys = 0;
+          try {
+            const v = JSON.parse(r.text);
+            keys = v && typeof v === "object" ? Object.keys(v).length : v != null ? 1 : 0;
+          } catch {}
+          if (r.status === 200 && keys > 0) {
+            s.firebaseOpen.push({ where: "Realtime Database", keys });
+            add({ id: "firebase:rtdb", severity: "critical", where: "Firebase Realtime Database", title: "Anyone on the internet can read your Firebase Realtime Database", why: `Its rules let visitors who aren't signed in read it (${keys} top-level ${keys > 1 ? "branches" : "branch"} visible). Everything under them is open.`, fix: "In Firebase → Realtime Database → Rules, require sign-in and limit each user to their own data.", ...P.rtdb() });
+          }
+        }
+        s.i = 1;
+      }
+      while (s.i - 1 < FIRESTORE_GUESSES.length) {
+        if (!room(1)) return pause();
+        const coll = FIRESTORE_GUESSES[s.i++ - 1];
+        // pageSize=1 and a mask on a field that doesn't exist: at most one document name comes back, no fields.
+        const q = `pageSize=1&mask.fieldPaths=__greenlit_none${fb.key ? `&key=${fb.key}` : ""}`;
+        const r = await get2(`https://firestore.googleapis.com/v1/projects/${fb.project}/databases/(default)/documents/${coll}?${q}`, {});
+        let n = 0;
+        try {
+          n = (JSON.parse(r.text).documents || []).length;
+        } catch {}
+        if (r.status === 200 && n > 0) {
+          s.firebaseOpen.push({ where: `Firestore "${coll}"` });
+          add({ id: `firebase:firestore:${coll}`, severity: isPersonal(coll) ? "critical" : "high", where: `Firestore collection "${coll}"`, title: `Anyone on the internet can read the Firestore collection "${coll}"`, why: "Your Firestore rules let visitors who aren't signed in read it. Greenlit asked for one document name and no fields; a stranger would take everything.", fix: `In Firebase → Firestore → Rules, close "${coll}" to everyone except its owner.`, ...P.firestore(coll) });
+        }
+      }
+    }
+    s.step = 6;
+  }
+
+  const stats = {
+    tables: sb ? s.tables.map(({ table, rows, sensitive }) => ({ table, rows, sensitive })) : null,
+    tablesTested: s.tested,
+    tablesUntested: s.untested.length,
+    tablesListed: s.listed,
+    dbBlind: Boolean(sb && s.tested === 0),
+    keyRejected: s.keyRejected,
+    firebaseOpen: s.firebaseOpen,
+  };
+  return { done: true, state: s, findings: s.findings, stats };
 }
 
 // Every fix prompt in one, worst first, for people who'd rather paste once. The builder still gets one

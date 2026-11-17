@@ -59,6 +59,84 @@
     return !iso || Number.isNaN(min) ? "a few minutes ago" : min < 1 ? "just now" : `${min} minute${min === 1 ? "" : "s"} ago`;
   };
 
+  // The database check, for the app's owner, right here. The owner adds a tag made from a key only this browser keeps;
+  // Greenlit sees it on the live page, then runs the database checks in short rounds and shows the full result.
+  const ownerPanel = (r, host) => {
+    const wrap = el("div", "owner");
+    const store = `greenlit:owner:${host}`;
+    let memo = null;
+    // Kept so a re-check after a fix needs no new tag. Private windows may refuse storage: then it lasts this visit only.
+    const load = () => {
+      try {
+        return JSON.parse(localStorage.getItem(store) || "null") || memo;
+      } catch {
+        return memo;
+      }
+    };
+    const keep = (v) => {
+      memo = v;
+      try {
+        localStorage.setItem(store, JSON.stringify(v));
+      } catch {}
+    };
+    const post = async (body) => {
+      try {
+        const res = await fetch("/api/owner", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        return { ok: res.ok, data: await res.json().catch(() => ({ error: "Something went wrong. Try again in a minute." })) };
+      } catch {
+        return { ok: false, data: { error: "Couldn't reach Greenlit. Check your connection and try again." } };
+      }
+    };
+    const msg = el("p", "note");
+    const go2 = el("button", "copy", "I've published it, check my database");
+    go2.type = "button";
+    const fail = (text) => {
+      msg.className = "err-line";
+      msg.textContent = text;
+      go2.disabled = false;
+    };
+    go2.addEventListener("click", async () => {
+      const saved = load();
+      if (!saved?.key) return fail("Start again to get your tag.");
+      go2.disabled = true;
+      msg.className = "note";
+      msg.textContent = "Looking for your tag on the live app…";
+      const v = await post({ url: r.url, step: "verify", key: saved.key });
+      if (!v.ok) return fail(v.data.error);
+      const job = v.data.job;
+      msg.textContent = v.data.database ? "Your tag is there. Checking your database…" : "Your tag is there. No database address was found in the code Greenlit read, so it's checking for exposed files only…";
+      for (let i = 0; i < 45; i++) {
+        const n = await post({ step: "next", job });
+        if (!n.ok) return fail(n.data.error);
+        if (n.data.done) return render(n.data.result);
+        if (v.data.database) msg.textContent = `Your tag is there. Checking your database (step ${Math.min(n.data.step + 1, n.data.of)} of ${n.data.of})…`;
+      }
+      fail("The database check took too long. Try again in a few minutes.");
+    });
+    const showTag = (tag) => {
+      const prompt = `Add this exact tag inside the <head> of my app's main HTML page (index.html, or the root layout), then publish the app:\n${tag}`;
+      const box = el("div", "r-prompt");
+      const bar = el("div", "r-prompt-bar");
+      bar.append(el("span", null, `Step 1 · paste into ${r.pasteInto}, then publish your app`), copyButton(prompt));
+      box.append(bar, el("pre", null, prompt));
+      wrap.replaceChildren(el("p", null, "The tag proves the app is yours. It's made from a key that only this browser keeps, so nobody else can use your tag. Visitors never see it, and you can take it off afterwards."), box, go2, msg);
+    };
+    const start = el("button", "copy", "Check my database here");
+    start.type = "button";
+    start.addEventListener("click", async () => {
+      const saved = load();
+      if (saved?.key && saved.tag) return showTag(saved.tag);
+      start.disabled = true;
+      const { ok, data } = await post({ url: r.url, step: "start" });
+      start.disabled = false;
+      if (!ok) return wrap.replaceChildren(el("p", "err-line", data.error), start);
+      keep({ key: data.key, tag: data.tag });
+      showTag(data.tag);
+    });
+    wrap.append(el("p", "next", r.owner ? "Fixed something? Check your database again once the fix is live. Your tag still works." : "Your app? Check which of its data strangers can read, right here. Add one tag to your app; Greenlit then counts what anyone can see, and never reads the data itself."), start, el("p", "small", `Or on your computer: npx greenlitlab ${host} --mine`));
+    return wrap;
+  };
+
   function render(r) {
     const card = el("div", "card");
     out.replaceChildren(card);
@@ -80,7 +158,7 @@
     for (const x of r.findings.filter((x) => x.severity === "info")) {
       const box = el("div", "unseen");
       box.append(el("h3", null, x.title), el("p", null, x.why));
-      if (x.id === "db:skipped") box.append(el("p", "next", `On your computer, for your own app: npx greenlitlab ${host} --mine`));
+      if (x.id === "db:skipped") box.append(ownerPanel(r, host));
       else if (x.fix) box.append(el("p", "next", x.fix));
       if (x.checkPrompt) {
         const p = el("div", "r-prompt");
@@ -113,6 +191,12 @@
         p.append(bar, el("pre", null, x.prompt));
         box.append(p);
       } else if (x.fix) box.append(el("p", "next", x.fix));
+      card.append(box);
+    }
+    // After an owner's check, the same panel checks again once a fix is live, with the tag already in place.
+    if (r.owner) {
+      const box = el("div", "unseen");
+      box.append(el("h3", null, "Checked as the app's owner, database included"), ownerPanel(r, host));
       card.append(box);
     }
     const red = r.findings.some((x) => x.severity === "critical" || x.severity === "high");

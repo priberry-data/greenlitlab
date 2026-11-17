@@ -16,7 +16,7 @@
 <meta property="og:url" content="https://greenlit.priberry.com/guides/supabase-rls/">
 <meta property="og:image" content="https://greenlit.priberry.com/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="/style.css?v=0.4.0">
+<link rel="stylesheet" href="/style.css?v=0.4.1">
 <link rel="stylesheet" href="/guide.css?v=1">
 </head>
 <body>
@@ -84,7 +84,7 @@ where n.nspname = 'public' and p.prosecdef;</code></pre>
   <p>A <b>public</b> bucket serves every file to anyone who has the link. That suits logos and product photos, not ID documents, invoices or private uploads. Open <b>Storage</b>, check which buckets are public, and make private any bucket holding things people uploaded about themselves. For every bucket, public or private, policies on <code>storage.objects</code> decide who can list, upload, overwrite and delete files (and, for private buckets, download them), so read them with the same eye as step 2.</p>
 
   <h2>Check from the outside too</h2>
-  <p>The steps above show what you configured. Greenlit shows what a stranger actually gets. On your own computer, <code>npx greenlitlab yourapp.com --mine</code> uses only your public key, the same one any visitor has, and reports which tables anyone can read and which storage buckets list their files. It asks for row counts and at most one file name, never contents, and it tests reading, not writing.</p>
+  <p>The steps above show what you configured. Greenlit shows what a stranger actually gets. Check your app on the Greenlit home page and choose "Check my database here" (you add one tag to prove the app is yours), or run <code>npx greenlitlab yourapp.com --mine</code> on your own computer. Either way it uses only your public key, the same one any visitor has, and reports which tables anyone can read and which storage buckets list their files. It asks for row counts and at most one file name, never contents, and it tests reading, not writing.</p>
 
   <section class="cta">
     <h2>See what a stranger sees</h2>

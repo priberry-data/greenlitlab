@@ -11,7 +11,7 @@ import { WEB_LIMITS } from "./check.js";
 const KEEP_SECONDS = 90 * 86400;
 
 // One secret for all tags, made once.
-async function salt(env) {
+export async function salt(env) {
   let s = await env.CHECK.get("secret:report-salt");
   if (!s) {
     s = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");

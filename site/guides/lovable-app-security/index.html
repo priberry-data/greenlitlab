@@ -16,7 +16,7 @@
 <meta property="og:url" content="https://greenlit.priberry.com/guides/lovable-app-security/">
 <meta property="og:image" content="https://greenlit.priberry.com/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="/style.css?v=0.4.0">
+<link rel="stylesheet" href="/style.css?v=0.4.1">
 <link rel="stylesheet" href="/guide.css?v=1">
 </head>
 <body>
@@ -76,7 +76,7 @@
 
   <h2>How to check most of this without reading code</h2>
   <p>Use your builder's own security review if it has one, then check from the outside: that's how a stranger sees your app. Greenlit looks at what your live site actually sends, grades it from A to F, explains each problem in plain words, and writes a prompt you can paste straight into Lovable, Bolt or v0 to fix it. Run it again after each fix to confirm the grade went up.</p>
-  <p>The web check covers secret keys, source maps, headers and launch leftovers. For your database, storage and sign-up settings, run <code>npx greenlitlab yourapp.com --mine</code> on your own computer. Items 5, 6 and 10 need you or your builder to look.</p>
+  <p>The web check covers secret keys, source maps, headers and launch leftovers. For your database, storage and sign-up settings, check your app, then choose "Check my database here" and add the tag it gives you. Or run <code>npx greenlitlab yourapp.com --mine</code> on your own computer. Items 5, 6 and 10 need you or your builder to look.</p>
 
   <section class="cta">
     <h2>Check your app in 30 seconds</h2>

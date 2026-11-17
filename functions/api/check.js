@@ -1,6 +1,6 @@
 // POST /api/check {url}: the passive Greenlit check, run from the web. It reads only what the site serves
 // to every visitor, the same as `npx greenlitlab <url>` without --mine. Database checks never run here,
-// because we can't know the person owns the app.
+// because we can't know the person owns the app. Owners run them through /api/owner, after proving it with a tag.
 import { siteScan, explainError } from "../../src/grade.mjs";
 import { selfProbe, allowKey, publicTarget, allow, bump, cacheGet, cachePut, servedHere, json } from "../../web/guard.js";
 

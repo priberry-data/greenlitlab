@@ -62,7 +62,7 @@ export function badgeSvg(report, now = Date.now()) {
 }
 
 export function reportPage(report, host, now = Date.now()) {
-  const head = (title) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css?v=0.4.0"></head><body><header class="top wrap"><a class="mark" href="/" aria-label="Greenlit home">greenl<span class="i">ı</span>t</a></header><main class="wrap block report">`;
+  const head = (title) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css?v=0.4.1"></head><body><header class="top wrap"><a class="mark" href="/" aria-label="Greenlit home">greenl<span class="i">ı</span>t</a></header><main class="wrap block report">`;
   const foot = `</main><footer class="foot wrap"><span>An independent check by <a href="https://priberry.com">Priberry</a>. <a href="/">Check your own app</a></span></footer></body></html>`;
   if (!report) return `${head("No report · Greenlit")}<div class="card"><p class="r-verdict">No report has been published for ${esc(host)}.</p><p class="note">The owner of an app can publish one from <a href="/">greenlit.priberry.com</a>.</p></div>${foot}`;
   const fresh = isFresh(report, now);
