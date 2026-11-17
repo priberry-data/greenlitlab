@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is my Lovable app secure? A checklist before launch · Greenlit</title>
+<meta name="description" content="Ten checks for apps built with Lovable, Bolt, v0 or Replit before real users arrive: secret keys, database rules, sign-up, storage, payments, and the leftovers that break a live app. Plain words, no code reading needed.">
+<link rel="canonical" href="https://greenlit.priberry.com/guides/lovable-app-security/">
+<meta name="theme-color" content="#0b0c0b">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Greenlit">
+<meta property="og:title" content="Is my Lovable app secure? A checklist before launch">
+<meta property="og:description" content="Ten checks for AI-built apps before real users arrive, in plain words.">
+<meta property="og:url" content="https://greenlit.priberry.com/guides/lovable-app-security/">
+<meta property="og:image" content="https://greenlit.priberry.com/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/style.css?v=0.4.0">
+<link rel="stylesheet" href="/guide.css?v=1">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top wrap">
+  <a class="mark" href="/" aria-label="Greenlit home">greenl<span class="i">ı</span>t</a>
+  <nav aria-label="Sections">
+    <a href="/guides/">Guides</a>
+    <a href="/">Check your app</a>
+    <a class="gh" href="https://github.com/priberry-data/greenlitlab">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+<article class="guide">
+  <p class="eyebrow">Guide · Before launch</p>
+  <h1>Is my Lovable app secure? A checklist before launch</h1>
+  <p class="lede">AI builders like Lovable, Bolt, v0 and Replit get you from idea to live app in a weekend. They don't always get the safety parts right, and you may never have read the code. These ten checks cover what goes wrong most often, in the order that matters.</p>
+  <p class="meta">Updated 18 November 2026</p>
+
+  <h2>The three that can sink you</h2>
+
+  <h3>1. No secret keys in your website</h3>
+  <p>Anything your site sends to the browser is public. A Stripe secret key, an OpenAI key or a Supabase <code>service_role</code> key in there means anyone can charge cards, run up your AI bill or read and change your whole database. Some keys are meant to be public (the Supabase <code>anon</code> key, the Stripe <code>pk_</code> key). Secret ones never are.</p>
+  <p>If you find one: <a href="/guides/leaked-api-key/">rotate it first, then move the call to a server</a>.</p>
+
+  <h3>2. Every database table has rules</h3>
+  <p>On Supabase, Row Level Security decides what a stranger can read with your public key. A table without it is open to the whole internet. A rule that just says <code>true</code> is the same. Ask your builder: "Turn on Row Level Security for every table and make sure users can only read and change their own rows." Then <a href="/guides/supabase-rls/">check that it really did</a>.</p>
+
+  <h3>3. Sign-up doesn't let just anyone in</h3>
+  <p>If anyone can sign up without confirming their email, rules that say "signed-in users only" protect nothing. Email confirmation slows this down, but anyone can still sign up with a real inbox in seconds. Your rules must check whose data it is, not just whether someone is signed in.</p>
+
+  <h2>The ones that hurt later</h2>
+
+  <h3>4. Uploaded files aren't public by accident</h3>
+  <p>A public storage bucket serves every file to anyone with the link. Fine for product photos, not for ID documents, invoices or anything users uploaded about themselves.</p>
+
+  <h3>5. Server functions check who's calling</h3>
+  <p>Edge functions and API routes should confirm the caller is signed in and allowed to do what they ask. A function that charges, emails or deletes without checking can be called by anyone who finds its address.</p>
+
+  <h3>6. Payment messages are verified</h3>
+  <p>If Stripe tells your app "this person paid" through a webhook, your app must check Stripe's signature. Otherwise anyone can send a fake "paid" message and unlock your product for free.</p>
+
+  <h3>7. Your source code isn't handed out</h3>
+  <p>Source maps, a public <code>.env</code> file or a reachable <code>.git</code> folder give away your code, your comments and sometimes your keys. None of them should be reachable on your live site.</p>
+
+  <h3>8. Basic security headers are on</h3>
+  <p>Frame protection stops other sites from putting your app inside theirs. A Content-Security-Policy limits what an injected script can load or do. They're cheap to add and easy to forget.</p>
+
+  <h2>The ones that break a live app</h2>
+
+  <h3>9. No leftovers from building</h3>
+  <p>Payments still in test mode, a page calling <code>localhost</code>, a placeholder title, a test email sender, or a setting that hides the site from Google. Each one is small, and each one makes a launch look broken.</p>
+
+  <h3>10. Things only you can answer</h3>
+  <p>Do you have backups? A spending limit on your AI and cloud accounts? A separate test database, so experiments don't touch real users? No scanner can see these. Write the answers down before launch.</p>
+
+  <h2>How to check most of this without reading code</h2>
+  <p>Use your builder's own security review if it has one, then check from the outside: that's how a stranger sees your app. Greenlit looks at what your live site actually sends, grades it from A to F, explains each problem in plain words, and writes a prompt you can paste straight into Lovable, Bolt or v0 to fix it. Run it again after each fix to confirm the grade went up.</p>
+  <p>The web check covers secret keys, source maps, headers and launch leftovers. For your database, storage and sign-up settings, run <code>npx greenlitlab yourapp.com --mine</code> on your own computer. Items 5, 6 and 10 need you or your builder to look.</p>
+
+  <section class="cta">
+    <h2>Check your app in 30 seconds</h2>
+    <p>Paste your app's address. Free, no sign-up, and it reads only what every visitor already sees.</p>
+    <a class="go" href="/">Check your app</a>
+  </section>
+
+  <section class="more">
+    <p><b>More guides</b></p>
+    <ul>
+      <li><a href="/guides/supabase-rls/">How to check your Supabase RLS before launch</a></li>
+      <li><a href="/guides/leaked-api-key/">I leaked an API key in my frontend. What now?</a></li>
+    </ul>
+  </section>
+</article>
+</main>
+
+<footer class="foot wrap">
+  <span class="mark small">greenl<span class="i">ı</span>t</span>
+  <span>Made by <a href="https://priberry.com">Priberry</a>, the crash-test lab for AI agents.</span>
+  <span><a href="https://github.com/priberry-data/greenlitlab">GitHub</a> · <a href="https://priberry.com/privacy/">Privacy</a></span>
+</footer>
+</body>
+</html>

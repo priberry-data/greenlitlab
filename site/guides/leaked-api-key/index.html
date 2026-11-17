@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I leaked an API key in my frontend. What now? · Greenlit</title>
+<meta name="description" content="A secret key in your website's JavaScript can be copied by anyone. What to do in the next hour: rotate it, check for abuse, move the call to a server, and tell which keys are actually safe to be public.">
+<link rel="canonical" href="https://greenlit.priberry.com/guides/leaked-api-key/">
+<meta name="theme-color" content="#0b0c0b">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Greenlit">
+<meta property="og:title" content="I leaked an API key in my frontend. What now?">
+<meta property="og:description" content="Rotate it, check for abuse, move the call to a server. The next hour, step by step.">
+<meta property="og:url" content="https://greenlit.priberry.com/guides/leaked-api-key/">
+<meta property="og:image" content="https://greenlit.priberry.com/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/style.css?v=0.4.0">
+<link rel="stylesheet" href="/guide.css?v=1">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top wrap">
+  <a class="mark" href="/" aria-label="Greenlit home">greenl<span class="i">ı</span>t</a>
+  <nav aria-label="Sections">
+    <a href="/guides/">Guides</a>
+    <a href="/">Check your app</a>
+    <a class="gh" href="https://github.com/priberry-data/greenlitlab">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+<article class="guide">
+  <p class="eyebrow">Guide · Keys</p>
+  <h1>I leaked an API key in my frontend. What now?</h1>
+  <p class="lede">Everything in your website's JavaScript is public. If a secret key ended up there, anyone can open the browser's developer tools and copy it, and bots scan for exactly this. Here is what to do, in order.</p>
+  <p class="meta">Updated 18 November 2026</p>
+
+  <h2>1. Rotate the key first</h2>
+  <p>Do this before anything else. Deleting the key from your code does not help: it has already been served to visitors, cached, and possibly copied. The only fix is to make the old key stop working.</p>
+  <ul>
+    <li><b>Stripe:</b> Developers → API keys → roll the secret key (<code>sk_live_…</code>) and set the old key to expire <b>now</b>, not later. Also roll any restricted key (<code>rk_live_…</code>) that leaked.</li>
+    <li><b>OpenAI, Anthropic, OpenRouter and other AI APIs:</b> open the API keys page, revoke the leaked key and create a new one.</li>
+    <li><b>Supabase <code>service_role</code> / <code>sb_secret_</code>:</b> in Project Settings → API Keys, create a new secret key, switch your functions to it, then delete the old one. If your project still uses the older <code>service_role</code> key (a long string starting <code>eyJ</code>), create new publishable and secret keys, switch your app and functions to them, then disable the legacy keys on the same page.</li>
+    <li><b>AWS:</b> deactivate the access key in IAM, then delete it.</li>
+  </ul>
+
+  <h2>2. Check whether someone already used it</h2>
+  <ul>
+    <li><b>Stripe:</b> look through recent payments, refunds, payouts and Developers → Logs for anything you didn't do.</li>
+    <li><b>AI APIs:</b> check the usage page for a spike, and set a monthly spending limit so a future leak can't run up a large bill.</li>
+    <li><b>Supabase:</b> look for new or changed rows you don't recognise, especially in user and payment tables. Check Logs (API Gateway) for unusual requests around the time of the leak.</li>
+  </ul>
+
+  <h2>3. Move the call to a server</h2>
+  <p>A secret key belongs on a server your users can't see. The frontend asks your server, the server calls the API with the key. With Supabase, the usual place is an Edge Function:</p>
+<pre><code>supabase secrets set STRIPE_SECRET_KEY=sk_live_...</code></pre>
+  <p>Then read it inside the function with <code>Deno.env.get("STRIPE_SECRET_KEY")</code>, and call the function from your app. If you build with Lovable or Bolt, you can ask for exactly this: "Move every call that uses the Stripe secret key into a Supabase Edge Function, read the key from a secret, and remove it from the client."</p>
+  <div class="note"><p>Watch the names of your environment variables. Anything starting with <code>VITE_</code>, <code>NEXT_PUBLIC_</code>, <code>EXPO_PUBLIC_</code>, <code>REACT_APP_</code> or <code>PUBLIC_</code> is put into the browser bundle on purpose. A secret key must never have one of those prefixes.</p></div>
+
+  <h2>4. Clean up the rest</h2>
+  <ul>
+    <li>Remove the old key from your code and environment files, even though it no longer works.</li>
+    <li>If the repository is public, the key is in its history too. Rotating already made it useless; rewriting history is optional.</li>
+    <li>Turn off source maps in production if they're on. They hand out your original source code, comments and all.</li>
+  </ul>
+
+  <h2>Which keys are meant to be public?</h2>
+  <p>Not every key in the browser is a leak. These are designed to be there, and are protected another way:</p>
+  <ul>
+    <li><b>Supabase <code>anon</code> / <code>sb_publishable_</code>:</b> safe, as long as <a href="/guides/supabase-rls/">Row Level Security</a> is right.</li>
+    <li><b>Stripe publishable key</b> (<code>pk_live_…</code>): safe by design.</li>
+    <li><b>Firebase web config <code>apiKey</code>:</b> identifies the project; your Security Rules protect the data.</li>
+    <li><b>Google Maps and similar browser keys:</b> fine if restricted to your domain in the provider's console. Unrestricted ones can be used on anyone's site, on your bill.</li>
+  </ul>
+
+  <h2>5. Check again</h2>
+  <p>After the fix is live, check the site from the outside to confirm the key is gone from what visitors get. Greenlit recognises 32 kinds of secret keys in the JavaScript your site sends, and tells you which ones are serious.</p>
+
+  <section class="cta">
+    <h2>Find out what your site gives away</h2>
+    <p>Paste your app's address. Greenlit reads only what any visitor's browser gets, grades it from A to F, and writes a fix prompt for each problem. Free, no sign-up.</p>
+    <a class="go" href="/">Check your app</a>
+  </section>
+
+  <section class="more">
+    <p><b>More guides</b></p>
+    <ul>
+      <li><a href="/guides/lovable-app-security/">Is my Lovable app secure? A checklist before launch</a></li>
+      <li><a href="/guides/supabase-rls/">How to check your Supabase RLS before launch</a></li>
+    </ul>
+  </section>
+</article>
+</main>
+
+<footer class="foot wrap">
+  <span class="mark small">greenl<span class="i">ı</span>t</span>
+  <span>Made by <a href="https://priberry.com">Priberry</a>, the crash-test lab for AI agents.</span>
+  <span><a href="https://github.com/priberry-data/greenlitlab">GitHub</a> · <a href="https://priberry.com/privacy/">Privacy</a></span>
+</footer>
+</body>
+</html>

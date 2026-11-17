@@ -18,3 +18,8 @@
 - `npx greenlitlab scan [folder]`: project files, before deploy · `npx greenlitlab advisor results.json`: Supabase Security Advisor in plain words · `npx greenlitlab questions`: seven things only the owner knows
 - MCP tools: `greenlit_check`, `greenlit_scan`, `greenlit_advisor`, `greenlit_questions`
 - An owner can publish a dated report and badge at https://greenlit.priberry.com/r/<host>; results expire after 30 days
+
+## Guides
+- https://greenlit.priberry.com/guides/lovable-app-security/ : ten checks before launching an AI-built app
+- https://greenlit.priberry.com/guides/supabase-rls/ : how to check Supabase Row Level Security, with SQL
+- https://greenlit.priberry.com/guides/leaked-api-key/ : what to do when a secret key is in your frontend

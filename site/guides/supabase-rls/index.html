@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to check your Supabase RLS before launch · Greenlit</title>
+<meta name="description" content="Your Supabase anon key is public by design, so Row Level Security is the only thing between strangers and your data. Five checks, with the SQL to run, to see whether your tables, policies, views and storage are really closed.">
+<link rel="canonical" href="https://greenlit.priberry.com/guides/supabase-rls/">
+<meta name="theme-color" content="#0b0c0b">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Greenlit">
+<meta property="og:title" content="How to check your Supabase RLS before launch">
+<meta property="og:description" content="Five checks, with the SQL to run, to see whether strangers can read your Supabase data.">
+<meta property="og:url" content="https://greenlit.priberry.com/guides/supabase-rls/">
+<meta property="og:image" content="https://greenlit.priberry.com/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/style.css?v=0.4.0">
+<link rel="stylesheet" href="/guide.css?v=1">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top wrap">
+  <a class="mark" href="/" aria-label="Greenlit home">greenl<span class="i">ı</span>t</a>
+  <nav aria-label="Sections">
+    <a href="/guides/">Guides</a>
+    <a href="/">Check your app</a>
+    <a class="gh" href="https://github.com/priberry-data/greenlitlab">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+<article class="guide">
+  <p class="eyebrow">Guide · Supabase</p>
+  <h1>How to check your Supabase RLS before launch</h1>
+  <p class="lede">If your app was built with Lovable, Bolt or another AI builder on Supabase, your database key is in your website's JavaScript. That is normal. It also means Row Level Security is the only thing deciding what a stranger can read. Here is how to check it in about ten minutes.</p>
+  <p class="meta">Updated 18 November 2026</p>
+
+  <h2>Why the key being public is fine, and RLS is not optional</h2>
+  <p>Supabase gives your app a public key (the <code>anon</code> or <code>sb_publishable_</code> key). Anyone who opens your site can copy it from the browser and call your database directly, without your app's screens in the way. What they get back is decided by RLS policies on each table.</p>
+  <p>A table with RLS turned off is readable and writable by anyone holding that key. A table with RLS on but a policy that says <code>true</code> is the same thing with extra steps.</p>
+  <div class="note"><p>The other key, <code>service_role</code> (or <code>sb_secret_</code>), skips RLS completely. It must never appear in your frontend. If it does, stop reading and <a href="/guides/leaked-api-key/">rotate it now</a>.</p></div>
+
+  <h2>1. Is RLS turned on for every table?</h2>
+  <p>In the Supabase dashboard, open <b>Advisors → Security Advisor</b>. A warning that RLS is disabled on a table in <code>public</code> is the most serious thing it can tell you. The Table Editor also labels these tables "Unrestricted".</p>
+  <p>Or ask the database directly in the SQL editor:</p>
+<pre><code>select tablename, rowsecurity
+from pg_tables
+where schemaname = 'public'
+order by rowsecurity, tablename;</code></pre>
+  <p>Every row should say <code>true</code>. For each <code>false</code>, turn it on:</p>
+<pre><code>alter table public.your_table enable row level security;</code></pre>
+  <p>With RLS on and no policies, nobody can read the table through the API. That is the safe default. Then add back only what the app needs.</p>
+
+  <h2>2. Do the policies actually check who is asking?</h2>
+  <p>List every policy:</p>
+<pre><code>select tablename, policyname, cmd, roles, qual, with_check
+from pg_policies
+where schemaname = 'public'
+order by tablename;</code></pre>
+  <p>Look closely at any row where <code>qual</code> or <code>with_check</code> is just <code>true</code>. That policy lets everyone in its roles through. It is fine for data that really is public, like a list of products. It is not fine for profiles, messages, orders or anything with an email address in it.</p>
+  <p>A policy that limits people to their own rows looks like this:</p>
+<pre><code>create policy "Own rows only" on public.profiles
+for select to authenticated
+using ((select auth.uid()) = user_id);</code></pre>
+  <p>Check the <code>insert</code> and <code>update</code> policies too. A common mistake is a careful <code>select</code> policy next to an <code>update</code> policy that lets any signed-in user change anyone's row, including fields like <code>is_admin</code> or <code>plan</code>.</p>
+
+  <h2>3. Can anyone sign up and become "authenticated"?</h2>
+  <p>Many policies say <code>to authenticated</code>, which feels safe. But if sign-up is open and email confirmation is off, anyone can create an account in seconds with a made-up address, and "signed-in users only" becomes "everyone".</p>
+  <p>In <b>Authentication → Sign In / Providers</b>, check whether email confirmation is on. If your policies rely on <code>authenticated</code> alone, it should be, and the policies should still check ownership as in step 2.</p>
+
+  <h2>4. Views and functions can skip RLS</h2>
+  <p>A view in <code>public</code> runs with its owner's rights by default, so it can return rows that the table's RLS would hide. On Postgres 15 and later, make views respect the caller's RLS:</p>
+<pre><code>alter view public.your_view set (security_invoker = true);</code></pre>
+  <p>Functions marked <code>security definer</code> also run with their owner's rights and can be called through the API. Find them:</p>
+<pre><code>select p.proname
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.prosecdef;</code></pre>
+  <p>Each one should check <code>auth.uid()</code> itself, move out of the <code>public</code> schema, or stop being callable from the API:</p>
+<pre><code>revoke execute on function public.your_function from anon, authenticated;</code></pre>
+
+  <h2>5. Storage buckets</h2>
+  <p>A <b>public</b> bucket serves every file to anyone who has the link. That suits logos and product photos, not ID documents, invoices or private uploads. Open <b>Storage</b>, check which buckets are public, and make private any bucket holding things people uploaded about themselves. For every bucket, public or private, policies on <code>storage.objects</code> decide who can list, upload, overwrite and delete files (and, for private buckets, download them), so read them with the same eye as step 2.</p>
+
+  <h2>Check from the outside too</h2>
+  <p>The steps above show what you configured. Greenlit shows what a stranger actually gets. On your own computer, <code>npx greenlitlab yourapp.com --mine</code> uses only your public key, the same one any visitor has, and reports which tables anyone can read and which storage buckets list their files. It asks for row counts and at most one file name, never contents, and it tests reading, not writing.</p>
+
+  <section class="cta">
+    <h2>See what a stranger sees</h2>
+    <p>Paste your app's address. You get a grade from A to F, every problem in plain words, and a prompt to paste into your builder to fix each one. Free, no sign-up.</p>
+    <a class="go" href="/">Check your app</a>
+  </section>
+
+  <section class="more">
+    <p><b>More guides</b></p>
+    <ul>
+      <li><a href="/guides/lovable-app-security/">Is my Lovable app secure? A checklist before launch</a></li>
+      <li><a href="/guides/leaked-api-key/">I leaked an API key in my frontend. What now?</a></li>
+    </ul>
+  </section>
+</article>
+</main>
+
+<footer class="foot wrap">
+  <span class="mark small">greenl<span class="i">ı</span>t</span>
+  <span>Made by <a href="https://priberry.com">Priberry</a>, the crash-test lab for AI agents.</span>
+  <span><a href="https://github.com/priberry-data/greenlitlab">GitHub</a> · <a href="https://priberry.com/privacy/">Privacy</a></span>
+</footer>
+</body>
+</html>
