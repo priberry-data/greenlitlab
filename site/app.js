@@ -61,8 +61,14 @@
 
   // The database check, for the app's owner, right here. The owner adds a tag made from a key only this browser keeps;
   // Greenlit sees it on the live page, then runs the database checks in short rounds and shows the full result.
+  // Off until the owner can prove control of the database itself (the server refuses too); see functions/api/owner.js.
+  const OWNER_WEB = false;
   const ownerPanel = (r, host) => {
     const wrap = el("div", "owner");
+    if (!OWNER_WEB) {
+      wrap.append(el("p", "next", "Your app? Check which of its data strangers can read. Run this on your computer: it uses only the public key your app already ships, and counts what anyone can see without reading the data."), el("pre", "cmd", `npx greenlitlab ${host} --mine`));
+      return wrap;
+    }
     const store = `greenlit:owner:${host}`;
     let memo = null;
     // Kept so a re-check after a fix needs no new tag. Private windows may refuse storage: then it lasts this visit only.

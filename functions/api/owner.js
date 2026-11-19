@@ -54,6 +54,10 @@ export function combine(site, flags, d) {
 
 export async function onRequestPost({ request, env, waitUntil }) {
   if (!servedHere(request)) return json({ error: "Use https://greenlit.priberry.com" }, 403);
+  // Off unless OWNER_DB is "on". The tag proves who controls the page, but the database to check is read from that same
+  // page, so anyone could copy another app's public Supabase or Firebase details onto a page they control and have
+  // Greenlit check that database. It stays off until the owner can prove control of the database itself.
+  if (env.OWNER_DB !== "on") return json({ error: `The database check runs on your own computer for now: npx greenlitlab <your app> --mine`, off: true }, 503);
   let body;
   try {
     body = await request.json();

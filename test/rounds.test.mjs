@@ -75,7 +75,7 @@ function cloudflare(fetcher) {
   globalThis.caches = { default: { match: async (r) => (store.has(r.url) ? new Response(store.get(r.url)) : undefined), put: async (r, res) => store.set(r.url, await res.text()) } };
   globalThis.fetch = fetcher;
   const kv = new Map();
-  const env = { CHECK: { get: async (k) => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async (k) => kv.delete(k) } };
+  const env = { OWNER_DB: "on", CHECK: { get: async (k) => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async (k) => kv.delete(k) } };
   const call = async (body, ip = "1.1.1.1") => {
     const request = new Request("http://localhost/api/owner", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify(body) });
     const r = await onRequestPost({ request, env, waitUntil: () => {} });
@@ -145,4 +145,14 @@ test("an editor or private preview link gets told what to paste instead, before 
     await assert.rejects(siteScan(u, { fetcher }), (e) => explainError(e.message).includes(word));
   }
   assert.equal(fetched, 0);
+});
+
+test("owner web: the database check is off unless OWNER_DB is on", async () => {
+  const request = new Request("http://localhost/api/owner", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: HOST, step: "start" }) });
+  const r = await onRequestPost({ request, env: {}, waitUntil: () => {} });
+  assert.equal(r.status, 503);
+  const data = await r.json();
+  assert.equal(data.off, true);
+  assert.match(data.error, /--mine/);
+  assert.ok(!data.key && !data.tag, "no tag is handed out while it's off");
 });
