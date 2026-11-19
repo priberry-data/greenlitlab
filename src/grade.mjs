@@ -544,7 +544,8 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
   if (allCode.some((t) => /onboarding@resend\.dev/i.test(t)))
     add({ id: "launch:test-sender", severity: "low", where: "your app's scripts", title: "Your app's email still uses a test sender", why: "The code mentions onboarding@resend.dev, Resend's test address. Email from it reaches only your own inbox, so real users won't get sign-up or reset emails.", fix: "Send from an address on your own verified domain.", ...P.testSender() });
   for (const c of page.headers?.getSetCookie?.() || []) {
-    const name = c.split("=")[0].trim();
+    // The name comes from the scanned site and can end up in a public report title: keep it short and plain.
+    const name = c.split("=")[0].trim().replace(/[^\w.-]/g, "").slice(0, 40);
     // Sign-in cookies only. Anti-forgery cookies (csrf, xsrf) must stay readable by the page's own script.
     if (!secure || PLATFORM_COOKIE.test(name) || /csrf|xsrf/i.test(name) || !/(^|[_.-])(session|sess|sid|auth|token|jwt|login)([_.-]|$)/i.test(name)) continue;
     if (/;\s*secure/i.test(c) && /;\s*httponly/i.test(c)) continue;

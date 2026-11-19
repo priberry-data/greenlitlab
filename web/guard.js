@@ -12,7 +12,8 @@ export function publicTarget(input) {
   if (!/^https?:$/.test(u.protocol)) return { error: "Only http and https addresses can be checked." };
   if (u.username || u.password) return { error: "Leave the user name and password out of the address." };
   if (u.port && !["80", "443"].includes(u.port)) return { error: "Only sites on the standard ports can be checked." };
-  const h = u.hostname.toLowerCase();
+  // A trailing dot ("localhost.", "admin.priberry.com.") names the same host, so it must not slip past the rules below.
+  const h = u.hostname.toLowerCase().replace(/\.+$/, "");
   if (!h.includes(".") || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)(localhost|local|internal|intranet|lan|home|corp|test|example|invalid)$/.test(h))
     return { error: "Enter the public address of your app, like myapp.lovable.app." };
   // Names that exist only to point at private addresses.
@@ -76,7 +77,15 @@ export async function bump(env, keys, by = 1) {
 }
 
 // The cache only works on the real address, so the API answers there only (and on a local dev server).
-export const servedHere = (request) => /^(greenlit\.priberry\.com|localhost|127\.0\.0\.1)$/.test(new URL(request.url).hostname);
+// Only this site's own pages may call the APIs: another site's page can't make its visitors' browsers fire checks.
+// (A cross-site form post would carry an Origin header and a non-JSON content type; either is refused.)
+export const servedHere = (request) => {
+  const here = new URL(request.url);
+  if (!/^(greenlit\.priberry\.com|localhost|127\.0\.0\.1)$/.test(here.hostname)) return false;
+  const origin = request.headers.get("origin");
+  if (origin && origin !== here.origin) return false;
+  return request.method !== "POST" || /^application\/json\b/i.test(request.headers.get("content-type") || "");
+};
 
 export const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra } });

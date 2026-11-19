@@ -268,7 +268,7 @@
     b.addEventListener("click", async () => {
       b.disabled = true;
       try {
-        await fetch("/api/watch", { method: "POST" });
+        await fetch("/api/watch", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
       } catch {}
       const p = el("p");
       p.append(document.createTextNode("Thank you, noted. Weekly re-checks aren't open yet. Email "));

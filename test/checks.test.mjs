@@ -660,3 +660,13 @@ test("claim: the owner tag is still found in a real head, and not in comments, s
   assert.ok(!hasClaim(`<head></head><body>${tag}</body>`, "abc"));
   assert.ok(!hasClaim(`<head><meta name="x" content='${tag}'></head>`, "abc"), "inside another tag's value");
 });
+
+test("guard: only this site's own JSON calls reach the APIs; trailing dots don't dodge the host rules", async () => {
+  const { servedHere, publicTarget } = await import("../web/guard.js");
+  const post = (headers) => new Request("https://greenlit.priberry.com/api/check", { method: "POST", headers, body: "{}" });
+  assert.ok(servedHere(post({ "content-type": "application/json", origin: "https://greenlit.priberry.com" })));
+  assert.ok(!servedHere(post({ "content-type": "application/json", origin: "https://evil.example" })), "another site's page");
+  assert.ok(!servedHere(post({ "content-type": "text/plain" })), "a cross-site form post");
+  for (const h of ["localhost.", "admin.priberry.com.", "x.nip.io."]) assert.ok(publicTarget(h).error, h);
+  assert.equal(publicTarget("myapp.lovable.app.").url, "https://myapp.lovable.app/");
+});
