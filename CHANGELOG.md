@@ -2,7 +2,8 @@
 
 ## 0.4.4 (unreleased)
 
-- `greenlit scan` reads Firebase rules: `firestore.rules`, `storage.rules` and `database.rules.json`. A rule of `if true`, or Firebase's test-mode date rule, is reported with a fix prompt (critical for database data and anything writable, high for a public read of files, which may be intended). This is the mistake behind several of the largest leaks from apps with AI features.
+- `greenlit scan` no longer raises an alarm for `verify_jwt = false` on a webhook whose code verifies the sender's signature (Stripe, Svix, GitHub and others): it's reported as low, to confirm the check runs first.
+- `greenlit scan` reads Firebase rules: `firestore.rules`, `storage.rules` and `database.rules.json`. A rule of `if true`, or Firebase's test-mode date rule, is reported with a fix prompt (critical for database data and anything writable, high for a public read of files, which may be intended). Open Firebase rules are a common cause of leaks from mobile and AI apps.
 
 ## Unreleased (website only)
 

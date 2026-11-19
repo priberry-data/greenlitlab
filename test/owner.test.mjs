@@ -367,3 +367,16 @@ test("scan: Firebase rules that let anyone in are found; locked-down rules and c
   assert.equal(f.filter((x) => x.id.startsWith("scan:firebase-open:database")).length, 1, '".write": "auth != null" is not open');
   fs.rmSync(dir, { recursive: true });
 });
+
+test("scan: verify_jwt = false on a webhook that checks its signature is low, not high", () => {
+  const dir = project({
+    "package.json": "{}",
+    "supabase/config.toml": "[functions.stripe-webhook]\nverify_jwt = false\n[functions.ai-chat]\nverify_jwt = false\n",
+    "supabase/functions/stripe-webhook/index.ts": 'const e = await stripe.webhooks.constructEventAsync(body, req.headers.get("stripe-signature"), secret);',
+    "supabase/functions/ai-chat/index.ts": "export default (req) => callModel(req);",
+  });
+  const f = codeScan(dir).findings;
+  assert.equal(f.find((x) => x.id === "scan:verify-jwt:stripe-webhook").severity, "low");
+  assert.equal(f.find((x) => x.id === "scan:verify-jwt:ai-chat").severity, "high");
+  fs.rmSync(dir, { recursive: true });
+});

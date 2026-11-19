@@ -41,6 +41,30 @@ function walk(root, max = 5000) {
 
 const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 
+// Whether a function's own code checks a webhook signature (Stripe, Svix/Resend/Clerk, GitHub, Lemon Squeezy, Paddle).
+const SIGNATURE = /constructEvent(?:Async)?\s*\(|webhooks?\.verify\s*\(|new\s+Webhook\s*\([\s\S]*?\.verify\s*\(|x-hub-signature|x-signature|paddle-signature|timingSafeEqual/i;
+function signsItself(dir) {
+  let found = false;
+  const stack = [dir];
+  while (stack.length && !found) {
+    const d = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {}
+    for (const e of entries) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) e.name !== "node_modules" && stack.push(full);
+      else if (/\.(ts|js|mjs)$/.test(e.name)) {
+        try {
+          if (SIGNATURE.test(fs.readFileSync(full, "utf8"))) found = true;
+        } catch {}
+      }
+    }
+  }
+  return found;
+}
+
 export function codeScan(dir = ".") {
   const root = path.resolve(dir);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`"${dir}" isn't a folder`);
@@ -76,7 +100,7 @@ export function codeScan(dir = ".") {
     if (isEnv) continue;
 
     // Firebase rules: "if true", or the test-mode date check, lets anyone on the internet in.
-    // This is the mistake behind the largest leaks from AI-built apps (whole chat histories, ID photos).
+    // Open rules are a common cause of leaks from mobile and AI apps.
     const fb = name.match(/(?:^|\/)(firestore|storage)\.rules$/);
     if (fb) {
       const rules = text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
@@ -165,8 +189,12 @@ export function codeScan(dir = ".") {
     }
 
     if (/(^|\/)supabase\/config\.toml$/.test(name)) {
-      for (const m of text.matchAll(/\[functions\.([\w-]+)\][^\[]*?verify_jwt\s*=\s*false/g))
-        add({ id: `scan:verify-jwt:${m[1]}`, severity: "high", where: `${name}:${lineOf(text, m.index)}`, title: `The function "${m[1]}" skips the sign-in check`, why: "verify_jwt = false means anyone on the internet can call this function. That is right only for webhooks that check a signature themselves.", fix: "Remove verify_jwt = false, or verify a signature inside the function.", first: null, prompt: `My Supabase edge function "${m[1]}" has verify_jwt = false, so anyone can call it. If it is a webhook, make it verify the sender's signature before doing anything. Otherwise remove that setting and make the function check the signed-in user and what they are allowed to do. Show me what you changed.` });
+      for (const m of text.matchAll(/\[functions\.([\w-]+)\][^\[]*?verify_jwt\s*=\s*false/g)) {
+        // A webhook that verifies its sender's signature itself is the one right use of verify_jwt = false.
+        if (signsItself(path.join(path.dirname(file), "functions", m[1])))
+          add({ id: `scan:verify-jwt:${m[1]}`, severity: "low", where: `${name}:${lineOf(text, m.index)}`, title: `The function "${m[1]}" skips the sign-in check and verifies a signature instead`, why: "That is the right setup for a webhook. Greenlit saw a signature check in its code but can't confirm it runs before anything else.", fix: "Make sure the signature check is the first thing the function does.", first: null, prompt: `My Supabase edge function "${m[1]}" has verify_jwt = false and verifies a webhook signature. Confirm the signature check runs before the function reads or changes anything, and that a request with a missing or wrong signature gets a 400. Change nothing unless it doesn't.` });
+        else add({ id: `scan:verify-jwt:${m[1]}`, severity: "high", where: `${name}:${lineOf(text, m.index)}`, title: `The function "${m[1]}" skips the sign-in check`, why: "verify_jwt = false means anyone on the internet can call this function. That is right only for webhooks that check a signature themselves.", fix: "Remove verify_jwt = false, or verify a signature inside the function.", first: null, prompt: `My Supabase edge function "${m[1]}" has verify_jwt = false, so anyone can call it. If it is a webhook, make it verify the sender's signature before doing anything. Otherwise remove that setting and make the function check the signed-in user and what they are allowed to do. Show me what you changed.` });
+      }
     }
 
     if (/webhook/i.test(name) && /\.(js|ts|mjs|tsx|py)$/.test(name) && /stripe/i.test(text) && !/constructEvent|construct_event|stripe-signature/i.test(text))
