@@ -645,9 +645,12 @@ test("speed: crafted pages can't make the scanners slow (ReDoS)", async () => {
   const { fetcher } = site({}, { page, headers: { "content-security-policy": "frame-ancestors 'none'" } });
   await siteScan("app.example", { fetcher });
   assert.ok(Date.now() - t1 < 3000, `page scan took ${Date.now() - t1} ms`);
-  const t2 = Date.now();
-  "eyJ".repeat(100000).match(/\beyJ[0-9A-Za-z_-]{10,2000}\.eyJ[0-9A-Za-z_-]{10,4000}\.[0-9A-Za-z_-]{10,1000}/g);
-  assert.ok(Date.now() - t2 < 1000, `JWT pattern took ${Date.now() - t2} ms`);
+  for (const pump of ["-eyJ", "-eyJaaaaaaaaaa", "eyJ", ".eyJ"]) {
+    const t2 = Date.now();
+    const { fetcher: f2 } = site({ "/assets/index.js": pump.repeat(Math.ceil(1e6 / pump.length)) });
+    await siteScan("app.example", { fetcher: f2 });
+    assert.ok(Date.now() - t2 < 2000, `a 1 MB script of ${pump} took ${Date.now() - t2} ms`);
+  }
 });
 
 test("claim: the owner tag is still found in a real head, and not in comments, scripts or the body", async () => {
@@ -659,6 +662,8 @@ test("claim: the owner tag is still found in a real head, and not in comments, s
   assert.ok(!hasClaim(`<head><script>"${tag}"</script></head>`, "abc"));
   assert.ok(!hasClaim(`<head></head><body>${tag}</body>`, "abc"));
   assert.ok(!hasClaim(`<head><meta name="x" content='${tag}'></head>`, "abc"), "inside another tag's value");
+  assert.ok(!hasClaim(`<head><script>x</scriptx>${tag}</script></head>`, "abc"), "</scriptx> doesn't end a script");
+  assert.ok(hasClaim(`<head><link href="data:image/png;base64,${"A".repeat(150000)}">${tag}</head>`, "abc"), "found after big inline data");
 });
 
 test("guard: only this site's own JSON calls reach the APIs; trailing dots don't dodge the host rules", async () => {

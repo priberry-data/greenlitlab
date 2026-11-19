@@ -80,8 +80,31 @@ export function looksReal(found, kind = "") {
   if (kind !== "twilio" && (/your[-_]|example|placeholder|replace|insert|[-_]here\b|goeshere|keyhere|tokenhere|api[-_]key$/i.test(found) || /[Yy]our[A-Z]/.test(found) || countsUpward(found))) return false;
   return new Set(found.replace(/[^A-Za-z0-9]/g, "").slice(-16)).size >= 4;
 }
-// Bounded, and anchored to a word start, so a run like "eyJeyJeyJ…" costs linear time, not quadratic.
-const JWT = /\beyJ[0-9A-Za-z_-]{10,2000}\.eyJ[0-9A-Za-z_-]{10,4000}\.[0-9A-Za-z_-]{10,1000}/g;
+const isTok = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 45;
+const isWord = (c) => isTok(c) && c !== 45;
+// JWTs (header.payload.signature, base64url), found from each ".eyJ" in one linear pass. The regex version
+// backtracked on input like "-eyJ-eyJ…" (seconds per megabyte).
+function findJwts(text) {
+  const out = [];
+  let from = 0;
+  let i;
+  while ((i = text.indexOf(".eyJ", from)) !== -1) {
+    let a = i;
+    while (a > from && i - a < 2003 && isTok(text.charCodeAt(a - 1))) a--;
+    let h = text.indexOf("eyJ", a);
+    while (h !== -1 && h < i && h > 0 && isWord(text.charCodeAt(h - 1))) h = text.indexOf("eyJ", h + 1);
+    const p = i + 1;
+    let e = p;
+    while (e < text.length && e - p <= 4003 && isTok(text.charCodeAt(e))) e++;
+    let s = e + 1;
+    while (s < text.length && s - e - 1 < 1000 && isTok(text.charCodeAt(s))) s++;
+    if (h !== -1 && h < i && i - h >= 13 && i - h <= 2003 && e - p >= 13 && e - p <= 4003 && text[e] === "." && s - e - 1 >= 10) {
+      out.push(text.slice(h, s));
+      from = s;
+    } else from = i + 1;
+  }
+  return out;
+}
 const SUPABASE_URL = /https:\/\/([a-z0-9]{20})\.supabase\.co/g;
 const FB_PROJECT = /projectId["']?\s*:\s*["']([a-z0-9-]{4,40})["']/;
 const FB_DB = /["'](https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:firebaseio\.com|firebasedatabase\.app))\/?["']/;
@@ -424,7 +447,7 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
         add({ id: `secret:${id}`, severity: "critical", where: b.where, title: `${title} is in code every visitor downloads`, why: `${why} Found: ${m[0].slice(0, 8)}…`, fix: "Revoke this key now, make a new one, and call that service only from your backend (an edge function or server route), never from the browser.", ...P.secret(title, revoke, env) });
       }
     }
-    for (const t of b.text.match(JWT) || []) {
+    for (const t of findJwts(b.text)) {
       const p = decodeJwt(t);
       if (!p) continue;
       if (p.role === "service_role" && !keysSeen.has(t)) {

@@ -52,7 +52,10 @@ export function headOf(html) {
     if (m && !m[1] && m[2] === "body") return out;
     if (m && m[1] && m[2] === "head") return out;
     if (m && !m[1] && RAW.has(m[2])) {
-      const close = low.indexOf(`</${m[2]}`, lt + 1);
+      // The element ends at "</name" followed by a space, "/" or ">" ("</scriptx>" doesn't close a script).
+      const end = new RegExp(`</${m[2]}[\\s/>]`, "g");
+      end.lastIndex = lt + 1;
+      const close = end.exec(low)?.index ?? -1;
       const gt = close < 0 ? -1 : low.indexOf(">", close);
       if (gt < 0) return out;
       i = gt + 1;
@@ -65,7 +68,7 @@ export function headOf(html) {
 }
 
 export const hasClaim = (html, token) => {
-  const head = headOf(html).slice(0, 32000);
+  const head = headOf(html);
   // Each meta tag is read attribute by attribute, so unquoted values (as HTML minifiers write them) count.
   // Every tag is read whole, quotes included, so the tag's text inside any other tag's value is swallowed with it.
   for (const tag of head.match(/<[a-z][\w:-]*(?:[^<>"']|"[^"]*"|'[^']*')*>/gi) || []) {
