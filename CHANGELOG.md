@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4 (unreleased)
+
+- `greenlit scan` reads Firebase rules: `firestore.rules`, `storage.rules` and `database.rules.json`. A rule of `if true`, or Firebase's test-mode date rule, is reported with a fix prompt (critical for database data and anything writable, high for a public read of files, which may be intended). This is the mistake behind several of the largest leaks from apps with AI features.
+
 ## Unreleased (website only)
 
 - "Tell me when it opens" takes an optional email, kept with the app's address only to write once on the day weekly re-checks open.

@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 
 // Build output, dependencies, agents' working copies, and tests (whose made-up secrets and tables aren't the app's).
 const SKIP = new Set(["node_modules", ".claude", "worktrees", "__tests__", "__mocks__", "__fixtures__", "fixtures", "test", "tests", "e2e", "cypress", ".git", "dist", "build", ".next", ".vercel", ".netlify", ".wrangler", "coverage", ".turbo", ".cache", "vendor", "__pycache__", ".venv"]);
-const TEXT = /\.(sql|toml|json|js|jsx|ts|tsx|mjs|cjs|py|vue|svelte)$|(^|\/)\.env[^/]*$/;
+const TEXT = /\.(sql|toml|json|js|jsx|ts|tsx|mjs|cjs|py|vue|svelte|rules)$|(^|\/)\.env[^/]*$/;
 const PUBLIC_PREFIX = "(?:VITE_|NEXT_PUBLIC_|REACT_APP_|EXPO_PUBLIC_|PUBLIC_|NUXT_PUBLIC_)";
 // The name must END in the secret word (or _KEY/_TOKEN after it): VITE_STRIPE_SECRET_KEY is a secret,
 // VITE_PASSWORD_MIN_LENGTH and VITE_WEBHOOK_URL are settings.
@@ -74,6 +74,30 @@ export function codeScan(dir = ".") {
       add({ id: `scan:public-secret:${m[1]}`, severity: "critical", where: `${name}:${lineOf(text, m.index)}`, title: `The secret ${m[1]} is named so it ships to the browser`, why: "Anything whose name starts with a public prefix (VITE_, NEXT_PUBLIC_ and the like) is copied into the JavaScript every visitor downloads. A secret there is public.", fix: "Rename it without the public prefix and use it only in backend code.", first: "Treat this key as leaked if the app has ever been deployed with it: revoke it and make a new one.", prompt: `My project has a secret named ${m[1]}. The public prefix means it is built into the frontend, where anyone can read it. Rename it without the prefix, move every use of it into backend code (an edge function or server route) that checks the user is signed in, and confirm it no longer appears anywhere in the frontend build. List the files you changed.` });
     }
     if (isEnv) continue;
+
+    // Firebase rules: "if true", or the test-mode date check, lets anyone on the internet in.
+    // This is the mistake behind the largest leaks from AI-built apps (whole chat histories, ID photos).
+    const fb = name.match(/(?:^|\/)(firestore|storage)\.rules$/);
+    if (fb) {
+      const rules = text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
+      const kind = fb[1] === "storage" ? "Storage" : "Firestore";
+      for (const m of rules.matchAll(/allow\s+([a-z,\s]+?)\s*:\s*if\s+(true|request\.time\s*<\s*timestamp\.date\s*\([^)]*\))\s*;/g)) {
+        const actions = m[1].replace(/\s+/g, "").split(",").filter(Boolean);
+        const writes = actions.some((a) => ["write", "create", "update", "delete"].includes(a));
+        const testMode = m[2] !== "true";
+        const line = lineOf(rules, m.index);
+        const what = writes ? (actions.some((a) => ["read", "get", "list"].includes(a)) ? "read and change" : "change") : "read";
+        add({ id: `scan:firebase-open:${fb[1]}:${line}`, severity: writes || kind === "Firestore" ? "critical" : "high", where: `${name}:${line}`, title: `Your ${kind} rules let anyone ${what} this data${testMode ? " until a date" : ""}`, why: testMode ? `"${m[2].replace(/\s+/g, " ")}" is Firebase's test-mode rule: until that date, anyone on the internet passes it, signed in or not. Data is often left in test mode by accident.` : `"if true" lets anyone on the internet ${what} it, signed in or not, with nothing but the project's public config.`, fix: "Allow access only when request.auth != null and the document belongs to request.auth.uid.", first: writes ? "Look for data you didn't put there: with write open, anyone could have changed or deleted it." : null, prompt: `My ${kind === "Storage" ? "Firebase Storage" : "Firestore"} security rules in ${name} use "allow ${actions.join(", ")}: if ${testMode ? "request.time < timestamp.date(...)" : "true"}" at line ${line}, so anyone on the internet can ${what} the data. Rewrite the rules so a signed-in user reaches only their own documents (request.auth != null && request.auth.uid == the owner field or path segment), keep anything truly public read-only and say which it is, and show me the new rules file. Then tell me how to test them with the Firebase emulator before deploying.` });
+      }
+      continue;
+    }
+    if (/(^|\/)database\.rules\.json$/.test(name)) {
+      for (const m of text.matchAll(/"\.(read|write)"\s*:\s*(?:true|"true")/g)) {
+        const line = lineOf(text, m.index);
+        add({ id: `scan:firebase-open:database:${line}`, severity: "critical", where: `${name}:${line}`, title: `Your Realtime Database rules let anyone ${m[1]} this data`, why: `"${m[0]}" lets anyone on the internet ${m[1]} it, signed in or not.`, fix: 'Use "auth != null && auth.uid === $uid" under a per-user path instead of true.', first: m[1] === "write" ? "Look for data you didn't put there: anyone could have changed or deleted it." : null, prompt: `My Firebase Realtime Database rules in ${name} set ".${m[1]}": true at line ${line}, so anyone can ${m[1]} the data. Rewrite them so each user reaches only their own data (for example under users/$uid with auth != null && auth.uid === $uid), keep anything truly public read-only and say which it is, and show me the new rules.` });
+      }
+      continue;
+    }
 
     if (name.endsWith(".sql")) {
       const sql = noComments(text);

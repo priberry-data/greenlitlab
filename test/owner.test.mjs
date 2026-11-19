@@ -348,3 +348,22 @@ test("scan: a rule or table that a later migration removed is not reported", () 
   assert.deepEqual(codeScan(again).findings.map((f) => f.id), ["scan:policy-true:t:all"]);
   fs.rmSync(again, { recursive: true });
 });
+
+test("scan: Firebase rules that let anyone in are found; locked-down rules and comments are left alone", () => {
+  const dir = project({
+    "package.json": "{}",
+    "firestore.rules": "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    // allow read: if true;\n    match /chats/{id} { allow read, write: if true; }\n    match /users/{uid} { allow read: if request.auth != null && request.auth.uid == uid; }\n    match /drafts/{id} { allow read: if request.time < timestamp.date(2026, 12, 1); }\n  }\n}\n",
+    "storage.rules": "service firebase.storage { match /b/{bucket}/o { match /{all=**} { allow read: if true; } } }\n",
+    "database.rules.json": '{ "rules": { ".read": true, ".write": "auth != null" } }',
+  });
+  const f = codeScan(dir).findings;
+  const ids = f.map((x) => x.id);
+  assert.ok(ids.includes("scan:firebase-open:firestore:5"), "if true on chats");
+  assert.ok(ids.includes("scan:firebase-open:firestore:7"), "test-mode date rule");
+  assert.ok(ids.includes("scan:firebase-open:storage:1") && ids.includes("scan:firebase-open:database:1"));
+  assert.ok(!ids.includes("scan:firebase-open:firestore:4") && !ids.includes("scan:firebase-open:firestore:6"), "comments and real auth checks pass");
+  assert.equal(f.find((x) => x.id === "scan:firebase-open:firestore:5").severity, "critical");
+  assert.equal(f.find((x) => x.id === "scan:firebase-open:storage:1").severity, "high", "a public read of files may be intended (images), so high, not critical");
+  assert.equal(f.filter((x) => x.id.startsWith("scan:firebase-open:database")).length, 1, '".write": "auth != null" is not open');
+  fs.rmSync(dir, { recursive: true });
+});
