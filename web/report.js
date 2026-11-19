@@ -29,14 +29,46 @@ export const toReport = (result, host = new URL(result.url).host, at = new Date(
 export const claimTag = (token) => `<meta name="greenlit" content="${token}">`;
 // Only a real tag in the page's <head> counts. The same text inside a comment, a script, a text box or the body
 // (where visitors' own words can end up) proves nothing.
+const RAW = new Set(["script", "style", "textarea", "template", "noscript", "title"]);
+// The <head> with comments and raw-text elements cut out, read in one pass with indexOf so a crafted page can't make
+// it slow (backtracking regexes took tens of seconds on 100 KB of "<script<script…"). An unclosed comment or element
+// ends the head there: nothing after it can count.
+export function headOf(html) {
+  const s = String(html || "").slice(0, 200000);
+  const low = s.toLowerCase();
+  let out = "";
+  let i = 0;
+  while (i < s.length) {
+    const lt = s.indexOf("<", i);
+    if (lt < 0) return out + s.slice(i);
+    out += s.slice(i, lt);
+    if (low.startsWith("<!--", lt)) {
+      const end = s.indexOf("-->", lt + 4);
+      if (end < 0) return out;
+      i = end + 3;
+      continue;
+    }
+    const m = /^<(\/?)([a-z][\w:-]*)/.exec(low.slice(lt, lt + 40));
+    if (m && !m[1] && m[2] === "body") return out;
+    if (m && m[1] && m[2] === "head") return out;
+    if (m && !m[1] && RAW.has(m[2])) {
+      const close = low.indexOf(`</${m[2]}`, lt + 1);
+      const gt = close < 0 ? -1 : low.indexOf(">", close);
+      if (gt < 0) return out;
+      i = gt + 1;
+      continue;
+    }
+    out += "<";
+    i = lt + 1;
+  }
+  return out;
+}
+
 export const hasClaim = (html, token) => {
-  const head = String(html || "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(script|style|textarea|template|noscript|title)\b[\s\S]*?<\/\1\s*>/gi, "")
-    .split(/<\/head\s*>|<body\b/i)[0];
+  const head = headOf(html).slice(0, 32000);
   // Each meta tag is read attribute by attribute, so unquoted values (as HTML minifiers write them) count.
   // Every tag is read whole, quotes included, so the tag's text inside any other tag's value is swallowed with it.
-  for (const tag of head.match(/<[a-z][\w:-]*(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || []) {
+  for (const tag of head.match(/<[a-z][\w:-]*(?:[^<>"']|"[^"]*"|'[^']*')*>/gi) || []) {
     if (!/^<meta[\s\/>]/i.test(tag)) continue;
     const attrs = {};
     for (const a of tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? a[4];

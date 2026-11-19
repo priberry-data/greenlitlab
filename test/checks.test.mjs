@@ -634,3 +634,29 @@ test("render: a passing grade points to the checks no outside scan can do", () =
   assert.doesNotMatch(renderSite({ ...r, supabase: null }, null, { color: false, mine: false }), /--mine/, "no database, no --mine");
   assert.doesNotMatch(renderSite({ ...r, grade: "D" }, null, { color: false, mine: false }), /no outside check/, "only on a pass");
 });
+
+test("speed: crafted pages can't make the scanners slow (ReDoS)", async () => {
+  const { hasClaim } = await import("../web/report.js");
+  const t0 = Date.now();
+  for (const pump of ["<script", "<a ", "<!--", "<script>"]) hasClaim(`<html><head>${pump.repeat(30000)}`, "t");
+  assert.ok(Date.now() - t0 < 1500, `hasClaim took ${Date.now() - t0} ms`);
+  const t1 = Date.now();
+  const page = `<html><head>${"<script <img <link ".repeat(15000)}</head></html>`;
+  const { fetcher } = site({}, { page, headers: { "content-security-policy": "frame-ancestors 'none'" } });
+  await siteScan("app.example", { fetcher });
+  assert.ok(Date.now() - t1 < 3000, `page scan took ${Date.now() - t1} ms`);
+  const t2 = Date.now();
+  "eyJ".repeat(100000).match(/\beyJ[0-9A-Za-z_-]{10,2000}\.eyJ[0-9A-Za-z_-]{10,4000}\.[0-9A-Za-z_-]{10,1000}/g);
+  assert.ok(Date.now() - t2 < 1000, `JWT pattern took ${Date.now() - t2} ms`);
+});
+
+test("claim: the owner tag is still found in a real head, and not in comments, scripts or the body", async () => {
+  const { hasClaim } = await import("../web/report.js");
+  const tag = '<meta name="greenlit" content="abc">';
+  assert.ok(hasClaim(`<html><head><script>var a="<body>"</script>${tag}</head><body></body></html>`, "abc"));
+  assert.ok(hasClaim(`<head><meta name=greenlit content=abc></head>`, "abc"), "unquoted, as minifiers write it");
+  assert.ok(!hasClaim(`<head><!-- ${tag} --></head>`, "abc"));
+  assert.ok(!hasClaim(`<head><script>"${tag}"</script></head>`, "abc"));
+  assert.ok(!hasClaim(`<head></head><body>${tag}</body>`, "abc"));
+  assert.ok(!hasClaim(`<head><meta name="x" content='${tag}'></head>`, "abc"), "inside another tag's value");
+});

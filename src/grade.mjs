@@ -80,7 +80,8 @@ export function looksReal(found, kind = "") {
   if (kind !== "twilio" && (/your[-_]|example|placeholder|replace|insert|[-_]here\b|goeshere|keyhere|tokenhere|api[-_]key$/i.test(found) || /[Yy]our[A-Z]/.test(found) || countsUpward(found))) return false;
   return new Set(found.replace(/[^A-Za-z0-9]/g, "").slice(-16)).size >= 4;
 }
-const JWT = /eyJ[0-9A-Za-z_-]{10,}\.eyJ[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}/g;
+// Bounded, and anchored to a word start, so a run like "eyJeyJeyJ…" costs linear time, not quadratic.
+const JWT = /\beyJ[0-9A-Za-z_-]{10,2000}\.eyJ[0-9A-Za-z_-]{10,4000}\.[0-9A-Za-z_-]{10,1000}/g;
 const SUPABASE_URL = /https:\/\/([a-z0-9]{20})\.supabase\.co/g;
 const FB_PROJECT = /projectId["']?\s*:\s*["']([a-z0-9-]{4,40})["']/;
 const FB_DB = /["'](https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:firebaseio\.com|firebasedatabase\.app))\/?["']/;
@@ -353,8 +354,8 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
       if (u && /^https?:$/.test(u.protocol)) srcs.add(u.href);
     }
   };
-  for (const m of page.text.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)) safeUrl(m[1], pageUrl) && srcs.add(safeUrl(m[1], pageUrl).href);
-  for (const m of page.text.matchAll(/<link[^>]+href=["']([^"']+\.m?js(?:\?[^"']*)?)["']/gi)) safeUrl(m[1], pageUrl) && srcs.add(safeUrl(m[1], pageUrl).href);
+  for (const m of page.text.matchAll(/<script[^<>]+src=["']([^"']+)["']/gi)) safeUrl(m[1], pageUrl) && srcs.add(safeUrl(m[1], pageUrl).href);
+  for (const m of page.text.matchAll(/<link[^<>]+href=["']([^"']+\.m?js(?:\?[^"']*)?)["']/gi)) safeUrl(m[1], pageUrl) && srcs.add(safeUrl(m[1], pageUrl).href);
   collect(page.text, pageUrl);
 
   const bundles = [{ where: "the page itself", text: page.text }];
@@ -397,7 +398,7 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
     }
   }
   const unread = [...srcs].filter((src) => !seen.has(src) && isOwn(src)).length + failed.size;
-  const scriptTags = [...page.text.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => safeUrl(m[1], pageUrl)).filter((u) => u && /^https?:$/.test(u.protocol));
+  const scriptTags = [...page.text.matchAll(/<script[^<>]+src=["']([^"']+)["']/gi)].map((m) => safeUrl(m[1], pageUrl)).filter((u) => u && /^https?:$/.test(u.protocol));
   const elsewhere = scriptTags.filter((u) => !isOwn(u.href)).length;
   // The page has scripts, but all of them live on another site, so its real code was never read.
   const noCodeRead = bundles.length === 1 && elsewhere > 0;
@@ -517,7 +518,7 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
   const scripts = bundles.slice(1);
   const inScripts = (re) => scripts.map((b) => b.text.match(re)).find(Boolean);
   // Only what the page loads or submits to: scripts, styles, frames, images and forms. A plain link loads nothing.
-  const loaded = [...page.text.matchAll(/<(?:script|img|iframe|source|embed)\b[^>]*?\bsrc=["']([^"']+)["']|<form\b[^>]*?\baction=["']([^"']+)["']|<link\b(?=[^>]*\brel=["']?(?:stylesheet|preload|modulepreload|icon|manifest)\b)[^>]*?\bhref=["']([^"']+)["']/gi)].map((m) => m[1] || m[2] || m[3]);
+  const loaded = [...page.text.matchAll(/<(?:script|img|iframe|source|embed)\b[^<>]*?\bsrc=["']([^"']+)["']|<form\b[^<>]*?\baction=["']([^"']+)["']|<link\b(?=[^<>]*\brel=["']?(?:stylesheet|preload|modulepreload|icon|manifest)\b)[^<>]*?\bhref=["']([^"']+)["']/gi)].map((m) => m[1] || m[2] || m[3]);
   if (!isLocal) {
     const inPage = loaded.find((u) => /^https?:\/\/(?:localhost|127\.0\.0\.1)(?=[:\/]|$)/i.test(u));
     // A bare http://localhost:3000 in a list is usually an allow-list (Lovable's own preview code has one), so only an address
@@ -536,7 +537,7 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
   const title = (page.text.match(/<title[^>]*>([^<]{0,120})<\/title>/i) || [])[1];
   if (title && DEFAULT_TITLE.test(title))
     add({ id: "launch:default-title", severity: "low", where: "the page itself", title: `Your app still has its default title, "${title.trim()}"`, why: "This is what shows in the browser tab, in Google and when someone shares your link.", fix: "Give the app a real title and description.", ...P.title(title.trim()) });
-  if (/<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*noindex/i.test(page.text) || /noindex/i.test(page.headers?.get("x-robots-tag") || ""))
+  if (/<meta[^<>]+name=["']robots["'][^<>]+content=["'][^"']*noindex/i.test(page.text) || /noindex/i.test(page.headers?.get("x-robots-tag") || ""))
     add({ id: "launch:noindex", severity: "low", where: "the page itself", title: "Your app tells Google not to list it", why: "A \"noindex\" setting is on. That's right for a private tool, and a problem if you want people to find the app by searching.", fix: "Remove the noindex setting if the app should be found.", ...P.noindex() });
   if (inScripts(AI_DIRECT))
     add({ id: "launch:ai-direct", severity: "low", where: "your app's scripts", title: "Your app seems to call an AI provider straight from the browser", why: "Calls made from the browser need the secret key in the browser, where anyone can copy it and run up your bill. If these calls really go through your own backend, this is fine.", fix: "Send AI calls through a backend function that checks the user and limits use.", ...P.aiDirect() });
