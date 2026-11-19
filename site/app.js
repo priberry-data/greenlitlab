@@ -253,10 +253,11 @@
       card.append(share);
     }
 
-    // The paid monitor doesn't exist yet. This button counts how many people want it, and keeps nothing about them.
+    // Weekly re-checks don't exist yet. This button counts how many people want them, and keeps nothing about them.
+    // No price here: a price next to a free result reads as a paywall, and people leave.
     const w = el("div", "watch");
-    w.append(el("p", null, "Your builder rewrites code with every prompt, so a fix can quietly break later. Want Greenlit to re-check this app every week and after every change, and tell you the moment something opens up?"));
-    const b = el("button", null, "Watch my app · $19/month");
+    w.append(el("p", null, "Your builder rewrites code with every prompt, so a fix can quietly break later. Want Greenlit to re-check this app every week and tell you the moment something opens up? Coming soon."));
+    const b = el("button", null, "Tell me when it opens");
     b.type = "button";
     b.addEventListener("click", async () => {
       b.disabled = true;
@@ -264,7 +265,7 @@
         await fetch("/api/watch", { method: "POST" });
       } catch {}
       const p = el("p");
-      p.append(document.createTextNode("Thank you. Watching isn't open yet, and you haven't been charged. Email "));
+      p.append(document.createTextNode("Thank you, noted. Weekly re-checks aren't open yet. Email "));
       const a = el("a", null, "crumple@priberry.com");
       a.href = `mailto:crumple@priberry.com?subject=${encodeURIComponent("Greenlit early access")}&body=${encodeURIComponent(`App: ${host}\n`)}`;
       p.append(a, document.createTextNode(" with the subject \"Greenlit early access\" and we'll tell you the day it opens."));

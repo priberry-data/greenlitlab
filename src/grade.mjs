@@ -180,9 +180,22 @@ async function get(url, { timeout = 15000, headers = {}, method = "GET", body = 
   }
 }
 
+// People often paste the link to their builder's editor or private preview, not the live app.
+// Those pages are the builder's own (often a sign-in or upgrade screen), so say what to paste instead.
+export function editorLink(u) {
+  const h = u.hostname.toLowerCase();
+  if (h === "lovable.dev" || h.endsWith(".lovable.dev")) return "That's your Lovable editor, not your app. In Lovable, click Publish (top right) and paste the address it gives you, like myapp.lovable.app.";
+  if (/^(id-)?preview--/.test(h) || h.endsWith(".lovableproject.com")) return "That's a private preview link, which only you can open. In Lovable, click Publish and paste the published address, like myapp.lovable.app.";
+  if (h === "bolt.new" || h.endsWith("stackblitz.com") || h.endsWith(".webcontainer.io") || h.endsWith(".webcontainer-api.io")) return "That's your Bolt editor, not your app. In Bolt, click Deploy and paste the address it gives you (it usually ends in .bolt.host or .netlify.app).";
+  if (h === "v0.dev" || h === "v0.app" || h === "www.v0.dev" || h === "www.v0.app") return "That's your v0 chat, not your app. In v0, click Publish and paste the address it gives you (it ends in .vercel.app).";
+  if (h === "replit.com" || h.endsWith(".replit.dev") || h.endsWith(".repl.co")) return "That's the Replit editor or a development link. In Replit, click Deploy and paste the address it gives you (it ends in .replit.app).";
+  return null;
+}
+
 // What went wrong, in words a non-developer can act on. Shared by the web check and the CLI.
 export function explainError(message) {
   const m = String(message);
+  if (m.startsWith("editor link: ")) return m.slice(13);
   const code = Number((m.match(/\((\d{3})\)$/) || [])[1]);
   if (/look like a web address/.test(m)) return "That doesn't look like a web address. Try something like myapp.lovable.app.";
   if (/isn't a web page/.test(m)) return "That address isn't a web page. Enter the address people open to use your app.";
@@ -311,6 +324,8 @@ export async function siteScan(target, { mine = false, fetcher = fetch, maxScrip
   const fetchOpts = (o = {}) => ({ max: maxBytes, ...o, fetcher });
   const url = safeUrl(/^https?:\/\//i.test(String(target).trim()) ? String(target).trim() : `https://${String(target).trim()}`);
   if (!url || !/^https?:$/.test(url.protocol) || !url.hostname.includes(".")) throw new Error(`"${target}" doesn't look like a web address`);
+  const editor = editorLink(url);
+  if (editor) throw new Error(`editor link: ${editor}`);
   const findings = [];
   const add = (f) => findings.push(f);
 

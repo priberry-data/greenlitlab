@@ -136,3 +136,13 @@ test("owner web: a database address that isn't a standard Supabase or Firebase h
   assert.equal(ok.supabase.url, SB);
   assert.equal(ok.firebase.db, null, "a database address that isn't Google's is dropped");
 });
+
+test("an editor or private preview link gets told what to paste instead, before anything is fetched", async () => {
+  const { siteScan, explainError } = await import("../src/grade.mjs");
+  let fetched = 0;
+  const fetcher = async () => { fetched++; throw new Error("no network"); };
+  for (const [u, word] of [["https://lovable.dev/projects/abc", "Lovable editor"], ["id-preview--1234.lovable.app", "private preview"], ["bolt.new/~/sb1-x", "Bolt editor"], ["https://v0.app/chat/abc", "v0 chat"], ["replit.com/@me/app", "Replit"]]) {
+    await assert.rejects(siteScan(u, { fetcher }), (e) => explainError(e.message).includes(word));
+  }
+  assert.equal(fetched, 0);
+});
