@@ -190,13 +190,24 @@ const safeUrl = (u, base) => {
   }
 };
 
-async function get(url, { timeout = 15000, headers = {}, method = "GET", body = null, max = 8 * 1024 * 1024, fetcher = fetch } = {}) {
+// With `allowUrl` (the website passes its address rules), every address is checked first, and redirects are followed
+// one hop at a time so each hop is checked too: a public page can't redirect the check to a private address.
+async function get(url, { timeout = 15000, headers = {}, method = "GET", body = null, max = 8 * 1024 * 1024, fetcher = fetch, allowUrl = null } = {}) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeout);
   try {
-    const r = await fetcher(url, { method, headers: { "user-agent": "greenlit (+https://greenlit.priberry.com)", ...headers }, ...(body != null && { body }), signal: ctl.signal, redirect: "follow" });
+    let at = url;
+    let r;
+    for (let hop = 0; ; hop++) {
+      if (allowUrl && !allowUrl(at)) return { status: 0, error: "blocked address", text: "" };
+      r = await fetcher(at, { method, headers: { "user-agent": "greenlit (+https://greenlit.priberry.com)", ...headers }, ...(body != null && { body }), signal: ctl.signal, redirect: allowUrl ? "manual" : "follow" });
+      const loc = allowUrl && r.status >= 300 && r.status < 400 ? r.headers?.get("location") : null;
+      if (!loc) break;
+      if (hop >= 5) return { status: 0, error: "too many redirects", text: "" };
+      at = new URL(loc, at).href;
+    }
     const text = method === "HEAD" ? "" : await readCapped(r, max);
-    return { status: r.status, headers: r.headers, text, url: r.url };
+    return { status: r.status, headers: r.headers, text, url: allowUrl ? at : r.url };
   } catch (e) {
     return { status: 0, error: e.name === "AbortError" ? "timed out" : e.message, text: "" };
   } finally {
@@ -343,9 +354,9 @@ const P = {
 };
 
 // --- the check -----------------------------------------------------------------------------------
-export async function siteScan(target, { mine = false, fetcher = fetch, maxScripts = 400, maxBytes = 8 * 1024 * 1024, maxTotalBytes = 200 * 1024 * 1024, deadlineMs = 120000, scriptTimeoutMs = 15000, pageTimeoutMs = 15000, tailMs = 20000, httpProbe = null, wantPage = false, wantPlan = false } = {}) {
+export async function siteScan(target, { mine = false, fetcher = fetch, allowUrl = null, maxScripts = 400, maxBytes = 8 * 1024 * 1024, maxTotalBytes = 200 * 1024 * 1024, deadlineMs = 120000, scriptTimeoutMs = 15000, pageTimeoutMs = 15000, tailMs = 20000, httpProbe = null, wantPage = false, wantPlan = false } = {}) {
   const deadline = Date.now() + deadlineMs;
-  const fetchOpts = (o = {}) => ({ max: maxBytes, ...o, fetcher });
+  const fetchOpts = (o = {}) => ({ max: maxBytes, ...o, fetcher, allowUrl });
   const url = safeUrl(/^https?:\/\//i.test(String(target).trim()) ? String(target).trim() : `https://${String(target).trim()}`);
   if (!url || !/^https?:$/.test(url.protocol) || !url.hostname.includes(".")) throw new Error(`"${target}" doesn't look like a web address`);
   const editor = editorLink(url);

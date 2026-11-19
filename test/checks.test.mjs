@@ -675,3 +675,21 @@ test("guard: only this site's own JSON calls reach the APIs; trailing dots don't
   for (const h of ["localhost.", "admin.priberry.com.", "x.nip.io."]) assert.ok(publicTarget(h).error, h);
   assert.equal(publicTarget("myapp.lovable.app.").url, "https://myapp.lovable.app/");
 });
+
+test("web: a redirect to a private address is never followed; a normal redirect still is", async () => {
+  const { WEB_LIMITS } = await import("../functions/api/check.js");
+  const asked = [];
+  const fetcher = async (url, opts) => {
+    asked.push(url);
+    assert.equal(opts.redirect, "manual");
+    const r = (status, headers = {}, body = "") => ({ status, url, headers: new Headers(headers), text: async () => body, body: null });
+    if (url === "https://shop.example.com/") return r(302, { location: "https://www.shop.example.com/" });
+    if (url === "https://www.shop.example.com/") return r(200, { "content-type": "text/html" }, '<script src="/a.js"></script><script src="http://127.0.0.1:6379/x.js"></script>');
+    if (url === "https://www.shop.example.com/a.js") return r(302, { location: "http://localhost./secret" });
+    return r(404);
+  };
+  const res = await siteScan("shop.example.com", { ...WEB_LIMITS, fetcher });
+  assert.ok(asked.includes("https://www.shop.example.com/"), "the normal redirect was followed");
+  assert.ok(!asked.some((u) => /127\.0\.0\.1|localhost/.test(u)), `private addresses asked: ${asked.join(" ")}`);
+  assert.ok(res.url);
+});

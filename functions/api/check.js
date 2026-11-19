@@ -9,7 +9,8 @@ const PER_HOUR = 30;
 // Short, because the whole point is to check again once a fix is live.
 const CACHE_SECONDS = 120;
 // Smaller than the CLI's: one web request may make about 50 fetches and must answer well inside a minute.
-export const WEB_LIMITS = { maxScripts: 30, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 8 * 1024 * 1024, deadlineMs: 18000, scriptTimeoutMs: 5000, pageTimeoutMs: 10000, tailMs: 8000 };
+// allowUrl: every address the web check fetches, redirects included, must pass the same rules as the one typed in.
+export const WEB_LIMITS = { allowUrl: (u) => !publicTarget(u).error, maxScripts: 30, maxBytes: 3 * 1024 * 1024, maxTotalBytes: 8 * 1024 * 1024, deadlineMs: 18000, scriptTimeoutMs: 5000, pageTimeoutMs: 10000, tailMs: 8000 };
 const day = () => new Date().toISOString().slice(0, 10);
 
 export async function onRequestPost({ request, env, waitUntil }) {
