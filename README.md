@@ -2,6 +2,8 @@
 
 **Is your AI-built app safe to launch?** Greenlit grades a deployed app from A to F for what a stranger can use against it. It explains each problem in plain words and gives you a prompt to paste back into Lovable, Bolt, v0, Replit or Emergent that fixes it. Run it again after the fix, and it shows what got fixed.
 
+<p><img src="https://raw.githubusercontent.com/priberry-data/greenlitlab/main/docs/demo.gif" alt="Greenlit checks a Lovable app: grade F with a leaked Stripe key, then a fix prompt to paste back" width="720"></p>
+
 **In the browser:** [greenlit.priberry.com](https://greenlit.priberry.com). Paste your app's address. Nothing to install.
 
 **On your computer:**
