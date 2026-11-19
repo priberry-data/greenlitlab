@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 (19 November 2026)
 
 - A passing grade now ends with what to check next: `--mine` (when the app has a database), `scan` and `questions`, the parts no outside check can see.
 - The website's database check is paused. The owner's tag proved control of the web page, but the database to check was read from that same page, so it could be pointed at another app's database. `--mine` on your own computer is unchanged. It returns once the owner can prove control of the database itself.
