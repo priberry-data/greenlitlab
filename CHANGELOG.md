@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- A passing grade now ends with what to check next: `--mine` (when the app has a database), `scan` and `questions`, the parts no outside check can see.
+- The website's database check is paused. The owner's tag proved control of the web page, but the database to check was read from that same page, so it could be pointed at another app's database. `--mine` on your own computer is unchanged. It returns once the owner can prove control of the database itself.
+- Crafted pages can no longer make a check slow: Supabase keys are found with a linear scan, the tag patterns stop at the next `<`, and the owner tag is read in one pass.
+- The web check follows redirects one hop at a time and checks each address (and every script and source map) against the same rules as the address typed in. A trailing dot (`localhost.`) no longer slips past those rules.
+- The website's APIs answer only this site's own JSON calls, so another site's page can't make its visitors fire checks.
+- Cookie names from a scanned site are kept short and plain before they reach a report title.
+
 ## 0.4.2 (10 November 2026)
 
 - A welcome screen: `npx greenlitlab` on its own, in a wide terminal, now shows a pixel-art signal on green and the four commands that matter. `--help` still prints the full reference, and pipes, CI, `NO_COLOR` and narrow windows get it too.
