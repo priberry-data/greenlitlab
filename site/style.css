@@ -147,6 +147,9 @@ h1 { font-size: clamp(42px, 6.2vw, 72px); line-height: 0.98; letter-spacing: -0.
 .watch p { margin: 0; flex: 1 1 320px; color: var(--ink); font-size: 15px; }
 .watch button { font: 600 14px var(--sans); border: 0; border-radius: 8px; padding: 11px 16px; background: var(--go); color: var(--go-ink); cursor: pointer; }
 .watch button:disabled { opacity: 0.55; }
+.watch-row { display: flex; gap: 8px; flex: 1 1 320px; flex-wrap: wrap; }
+.watch-row input { flex: 1 1 200px; min-width: 0; font: 400 14px var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 10px 12px; }
+.watch-row input:focus { outline: 2px solid var(--go); outline-offset: 1px; }
 
 /* Sections */
 .block { padding-top: 96px; }

@@ -60,8 +60,15 @@ export async function onRequestPost({ request, env, waitUntil }) {
   result.checkedAt = new Date().toISOString();
   await cachePut(cacheKey, result, CACHE_SECONDS);
   await cachePut(`last:${t.url}`, result, 600);
-  // Counted one time in five, five at a time: the count stays right on average and the store's daily write limit lasts.
-  if (Math.random() < 0.2) waitUntil(bump(env, [`count:checks:${day()}`], 5));
+  // Our own test checks (flagged by the page) are left out, so the numbers are real visitors.
+  if (body.internal !== true) {
+    // Counted one time in five, five at a time: the count stays right on average and the store's daily write limit lasts.
+    // The grade is counted by month with no address: the share of apps that get each grade, never which app.
+    if (Math.random() < 0.2) waitUntil(bump(env, [`count:checks:${day()}`, `count:grade:${result.grade}:${day().slice(0, 7)}`], 5));
+    // The page says whether this browser checked the same app before: on the same day (a fix being re-checked) or on a
+    // later day (someone coming back). Rare enough to count every time.
+    if (body.again === "same" || body.again === "later") waitUntil(bump(env, [`count:again:${body.again}:${day()}`]));
+  }
   return json(result);
 }
 

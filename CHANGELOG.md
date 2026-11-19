@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (website only)
+
+- "Tell me when it opens" takes an optional email, kept with the app's address only to write once on the day weekly re-checks open.
+- The site counts, with no address and nothing about the visitor, how often the same browser checks an app again (the same day, after a fix, or a later day) and how many apps get each grade. Visits from our own test browsers are left out.
+- Badge and report pages limit how often one visitor can ask, so a flood of made-up addresses can't use up the store's daily reads.
+
 ## 0.4.3 (19 November 2026)
 
 - A passing grade now ends with what to check next: `--mine` (when the app has a database), `scan` and `questions`, the parts no outside check can see.

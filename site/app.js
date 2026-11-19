@@ -21,6 +21,43 @@
     status.hidden = !text;
   };
 
+  // Two numbers the server can't work out alone: whether this browser checked the same app before (a fix being
+  // re-checked, or someone coming back on a later day), and whether the visitor is one of us testing.
+  // Only those two flags are sent; the list of apps stays in this browser.
+  const SEEN = "greenlit:seen";
+  const store = {
+    get: (k, d) => {
+      try {
+        return JSON.parse(localStorage.getItem(k) || "null") ?? d;
+      } catch {
+        return d;
+      }
+    },
+    set: (k, v) => {
+      try {
+        localStorage.setItem(k, JSON.stringify(v));
+      } catch {}
+    },
+  };
+  if (new URLSearchParams(location.search).get("internal") === "1") store.set("greenlit:internal", true);
+  const internal = store.get("greenlit:internal", false) === true;
+  const visit = (url) => {
+    let host;
+    try {
+      host = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {
+      return null;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const seen = store.get(SEEN, {});
+    const last = typeof seen[host] === "string" ? seen[host] : null;
+    seen[host] = today;
+    // The 50 most recent apps are plenty; older ones fall off.
+    const keep = Object.entries(seen).sort((a, b) => (a[1] < b[1] ? 1 : -1)).slice(0, 50);
+    store.set(SEEN, Object.fromEntries(keep));
+    return last ? (last < today ? "later" : "same") : null;
+  };
+
   // The same wording as allPrompts() in src/grade.mjs, so the web and the CLI give the same combined prompt.
   const allPrompts = (list) =>
     [`My app has ${list.length} problem${list.length > 1 ? "s" : ""} to fix. Work through them in this order, one at a time. After each one, tell me what you changed before moving on. Don't change anything unrelated.`, ...list.map((f, i) => `${i + 1}. ${f.title}.\n${f.prompt}`)].join("\n\n");
@@ -259,25 +296,54 @@
       card.append(share);
     }
 
-    // Weekly re-checks don't exist yet. This button counts how many people want them, and keeps nothing about them.
-    // No price here: a price next to a free result reads as a paywall, and people leave.
+    // Weekly re-checks don't exist yet. This counts how many people want them; an email is optional, kept only to
+    // tell that person the day they open. No price here: a price next to a free result reads as a paywall, and people leave.
     const w = el("div", "watch");
     w.append(el("p", null, "Your builder rewrites code with every prompt, so a fix can quietly break later. Want Greenlit to re-check this app every week and tell you the moment something opens up? Coming soon."));
+    const row = el("div", "watch-row");
+    const mail = el("input");
+    mail.type = "email";
+    mail.autocomplete = "email";
+    mail.maxLength = 254;
+    mail.placeholder = "you@example.com (optional)";
+    mail.setAttribute("aria-label", "Your email, to hear the day weekly re-checks open (optional)");
     const b = el("button", null, "Tell me when it opens");
     b.type = "button";
-    b.addEventListener("click", async () => {
+    const send = async () => {
+      const email = mail.value.trim();
+      if (email && !mail.checkValidity()) {
+        mail.focus();
+        return mail.reportValidity();
+      }
       b.disabled = true;
+      let saved = false;
       try {
-        await fetch("/api/watch", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        const res = await fetch("/api/watch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ host, email: email || undefined, internal: internal || undefined }) });
+        saved = email ? (await res.json().catch(() => ({}))).saved === true : false;
       } catch {}
       const p = el("p");
-      p.append(document.createTextNode("Thank you, noted. Weekly re-checks aren't open yet. Email "));
-      const a = el("a", null, "crumple@priberry.com");
-      a.href = `mailto:crumple@priberry.com?subject=${encodeURIComponent("Greenlit early access")}&body=${encodeURIComponent(`App: ${host}\n`)}`;
-      p.append(a, document.createTextNode(" with the subject \"Greenlit early access\" and we'll tell you the day it opens."));
-      w.replaceChildren(p);
+      if (saved) p.textContent = `Thank you. We'll email ${email} once, on the day weekly re-checks open. Nothing else.`;
+      else {
+        p.append(document.createTextNode(email ? "Thank you. We couldn't save your email just now, so write to " : "Thank you, noted. Weekly re-checks aren't open yet. To hear the day they open, leave your email above or write to "));
+        const a = el("a", null, "hello@priberry.com");
+        a.href = `mailto:hello@priberry.com?subject=${encodeURIComponent("Greenlit early access")}&body=${encodeURIComponent(`App: ${host}\n`)}`;
+        p.append(a, document.createTextNode("."));
+      }
+      if (saved || email) w.replaceChildren(p);
+      else {
+        b.disabled = false;
+        w.replaceChildren(w.firstChild, row, p);
+      }
+    };
+    b.addEventListener("click", send);
+    mail.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        send();
+      }
     });
-    w.append(b);
+    row.append(mail, b);
+    w.append(row);
     card.append(w);
     const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
     out.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" });
@@ -353,8 +419,9 @@
       // The whole message must be on screen, even on a short laptop window or above a phone keyboard.
       status.scrollIntoView({ block: "nearest" });
     };
+    const again = visit(url) || undefined;
     try {
-      const res = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }), signal: stop.signal });
+      const res = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, again, internal: internal || undefined }), signal: stop.signal });
       const data = await res.json().catch(() => null);
       if (!data) fail(`The check couldn't finish this time. Try again, or run it on your computer: npx greenlitlab ${url}`);
       else if (!res.ok || data.error) fail(data.error || "Something went wrong. Try again in a minute.");
