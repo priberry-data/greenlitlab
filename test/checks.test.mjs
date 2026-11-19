@@ -624,3 +624,13 @@ test("keys: typed-in fake keys are not leaks; a real password that merely contai
   ];
   for (const real of reals) assert.equal((await siteScan("shop.example", { fetcher: launchSite({ script: `const k="${real}";`, dns: GOOD_DNS }).fetcher })).grade, "F", real);
 });
+
+test("render: a passing grade points to the checks no outside scan can do", () => {
+  const r = { url: "https://app.example/", grade: "A", score: 96, verdict: "Ready.", scripts: 3, findings: [], supabase: { checked: false }, pasteInto: "x" };
+  const out = renderSite(r, null, { color: false, mine: false });
+  assert.match(out, /greenlitlab app\.example --mine/);
+  assert.match(out, /greenlitlab scan/);
+  assert.match(out, /greenlitlab questions/);
+  assert.doesNotMatch(renderSite({ ...r, supabase: null }, null, { color: false, mine: false }), /--mine/, "no database, no --mine");
+  assert.doesNotMatch(renderSite({ ...r, grade: "D" }, null, { color: false, mine: false }), /no outside check/, "only on a pass");
+});

@@ -985,6 +985,13 @@ export function renderSite(r, change, { color = true, mine = r.mine } = {}) {
   if (n) {
     L.push(dim(`Fix the red items first, one prompt at a time. Copy one prompt: npx greenlitlab ${new URL(r.url).host}${mine ? " --mine" : ""} --prompt 1 | pbcopy  (or --prompt all for every fix in one)`));
     L.push(dim("After the fixes are live, run this same command again: it shows what got fixed."));
+  } else if (r.grade === "A" || r.grade === "B") {
+    // A pass from outside isn't the whole answer: say where to look next.
+    const host = new URL(r.url).host;
+    L.push("", bold("  Next, the parts no outside check can see:"));
+    if ((r.supabase || r.firebase) && !mine) L.push(`  ${green("›")} npx greenlitlab ${host} --mine   ${dim("your own app: which database tables anyone can read")}`);
+    L.push(`  ${green("›")} npx greenlitlab scan            ${dim("in your project folder: rules that let everyone in")}`);
+    L.push(`  ${green("›")} npx greenlitlab questions       ${dim("seven things only you know, like backups and spending limits")}`);
   }
   return L.join("\n");
 }
