@@ -23,3 +23,4 @@
 - https://greenlit.priberry.com/guides/lovable-app-security/ : ten checks before launching an AI-built app
 - https://greenlit.priberry.com/guides/supabase-rls/ : how to check Supabase Row Level Security, with SQL
 - https://greenlit.priberry.com/guides/leaked-api-key/ : what to do when a secret key is in your frontend
+- https://greenlit.priberry.com/guides/vibe-coding-security-prompt/ : a copy-and-paste security prompt for Lovable, Bolt, v0 and Replit apps

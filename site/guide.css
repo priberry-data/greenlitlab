@@ -24,3 +24,8 @@
 .guide-list li { border-top: 1px solid var(--line); padding: 20px 0; margin: 0; }
 .guide-list a { font-size: 20px; font-weight: 600; text-decoration: none; }
 .guide-list p { color: var(--ink-2); margin: 6px 0 0; font-size: 16px; }
+
+/* copy-paste prompt block */
+.prompt{position:relative;white-space:pre-wrap;font:14px/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:18px 18px 18px;margin:18px 0;overflow-wrap:anywhere}
+.copy{display:inline-block;margin:0 0 8px;font:inherit;font-size:14px;padding:8px 14px;border-radius:8px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer}
+.copy:hover{opacity:.8}

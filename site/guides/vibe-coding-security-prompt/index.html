@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vibe coding security prompt: paste this into Lovable, Bolt or v0 · Greenlit</title>
+<meta name="description" content="A copy-and-paste security prompt for apps built with Lovable, Bolt, v0 or Replit. It asks your builder to fix the eight problems AI-built apps get wrong most often, then shows you how to check it really did.">
+<link rel="canonical" href="https://greenlit.priberry.com/guides/vibe-coding-security-prompt/">
+<meta name="theme-color" content="#0b0c0b">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Greenlit">
+<meta property="og:title" content="Vibe coding security prompt: paste this into Lovable, Bolt or v0">
+<meta property="og:description" content="One prompt that asks your AI builder to fix the eight most common security problems, and how to check it did.">
+<meta property="og:url" content="https://greenlit.priberry.com/guides/vibe-coding-security-prompt/">
+<meta property="og:image" content="https://greenlit.priberry.com/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/style.css?v=0.4.1">
+<link rel="stylesheet" href="/guide.css?v=2">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top wrap">
+  <a class="mark" href="/" aria-label="Greenlit home">greenl<span class="i">ı</span>t</a>
+  <nav aria-label="Sections">
+    <a href="/guides/">Guides</a>
+    <a href="/">Check your app</a>
+    <a class="gh" href="https://github.com/priberry-data/greenlitlab">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+<article class="guide">
+  <p class="eyebrow">Guide · Copy and paste</p>
+  <h1>Vibe coding security prompt: paste this into Lovable, Bolt or v0</h1>
+  <p class="lede">AI builders write the code you asked for. Unless you ask, they rarely lock it down. This prompt asks your builder to fix the eight problems that show up most often in AI-built apps. Paste it in before you launch, then check from the outside that the fixes are really there.</p>
+  <p class="meta">Updated 19 November 2026</p>
+
+  <h2>The prompt</h2>
+  <button class="copy" type="button" data-copy-target="p1">Copy the prompt</button>
+  <div class="prompt" id="p1">Review this app for security before launch and fix what you find. Work through each point, then tell me what you changed and what you couldn't change.
+
+1. Secret keys: make sure no secret key is in the frontend code or in any file the browser downloads. That includes Stripe secret keys (sk_), OpenAI or Anthropic keys, and the Supabase service_role key. Move every call that needs a secret key into a server or edge function and keep the key in a server-side secret.
+
+2. Database rules: turn on Row Level Security on every Supabase table. Write policies so a user can only read and change their own rows. Remove any policy that is just "true" for everyone, unless the table is meant to be fully public, and tell me which tables those are.
+
+3. Sign-up: don't let a rule that says "signed-in users" stand in for "this user owns this row". Every policy must check whose data it is.
+
+4. File storage: make storage buckets private unless they hold files everyone is meant to see. Serve private files with signed links that expire.
+
+5. Server functions: every edge function or API route must check who is calling and whether they're allowed to do what they ask before it charges, emails, deletes or returns data.
+
+6. Payments: if the app gets Stripe webhooks, verify Stripe's signature on every one, and ignore any "paid" message that fails the check.
+
+7. Source code: don't publish source maps, .env files or the .git folder on the live site.
+
+8. Headers and leftovers: add basic security headers (frame protection with frame-ancestors or X-Frame-Options, a Content-Security-Policy, X-Content-Type-Options: nosniff). Remove test-mode payment keys, calls to localhost, placeholder titles and anything that hides the site from search engines.
+
+Don't change how the app looks or behaves for real users. If a fix would change behaviour, ask me first.</div>
+
+  <h2>Why each line is there</h2>
+  <p><b>Secret keys</b> are the most common problem we see: anything your site sends to the browser is public, and a secret key there lets anyone charge cards, run up your AI bill or read your database. The Supabase <code>anon</code> key and a Stripe <code>pk_</code> key are meant to be public. Secret ones never are. <a href="/guides/leaked-api-key/">If one already leaked, rotate it first.</a></p>
+  <p><b>Database rules</b> decide what a stranger can read with your public key. A table without Row Level Security is open to anyone. <a href="/guides/supabase-rls/">How to check your RLS.</a></p>
+  <p><b>Storage, server functions and webhooks</b> are where a working app quietly trusts whoever calls it. <b>Source maps and headers</b> are cheap to fix and easy to forget. <b>Leftovers</b> don't leak anything, but they make a launch look broken.</p>
+
+  <h2>Don't take the builder's word for it</h2>
+  <p>An AI builder will often say "done" when only part of the fix landed, or put a key back while fixing something else. Check from the outside, the way a stranger would. Greenlit reads what your live site actually sends, grades it from A to F, and writes a fix prompt for anything still wrong. Run it after every round of fixes.</p>
+  <p>From just a link, Greenlit checks secret keys, source maps, headers and launch leftovers. To check your database and storage rules, prove the app is yours first: add the tag the site gives you, or run <code>npx greenlitlab yourapp.com --mine</code> on your own computer. Points 5 and 6 need you or your builder to look; no outside check can see them.</p>
+
+  <section class="cta">
+    <h2>Check your app in 30 seconds</h2>
+    <p>Paste your app's live address. Free, no sign-up, and it reads only what every visitor already sees.</p>
+    <a class="go" href="/">Check your app</a>
+  </section>
+
+  <section class="more">
+    <p><b>More guides</b></p>
+    <ul>
+      <li><a href="/guides/lovable-app-security/">Vibe coding security checklist: is my Lovable app safe to launch?</a></li>
+      <li><a href="/guides/supabase-rls/">How to check your Supabase RLS before launch</a></li>
+      <li><a href="/guides/leaked-api-key/">I leaked an API key in my frontend. What now?</a></li>
+    </ul>
+  </section>
+</article>
+</main>
+
+<footer class="foot wrap">
+  <span class="mark small">greenl<span class="i">ı</span>t</span>
+  <span>Made by <a href="https://priberry.com">Priberry</a>, the crash-test lab for AI agents.</span>
+  <span><a href="https://github.com/priberry-data/greenlitlab">GitHub</a> · <a href="https://priberry.com/privacy/">Privacy</a></span>
+</footer>
+<script src="/guides/copy.js" defer></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "a18f85d41ea64b02bb47e6ca80b4f81c"}'></script>
+</body>
+</html>

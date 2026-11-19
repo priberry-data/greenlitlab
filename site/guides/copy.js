@@ -1,0 +1,1 @@
+document.querySelectorAll('[data-copy-target]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById(b.getAttribute('data-copy-target')).innerText;if(navigator.clipboard){navigator.clipboard.writeText(t).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy the prompt'},2000)})}})});
