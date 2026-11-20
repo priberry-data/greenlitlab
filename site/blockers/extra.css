@@ -1,0 +1,16 @@
+/* Launch Blockers additions on top of the shared terminal styles. */
+.logo{font-size:13px}
+.wordmark{margin:18px 0 8px;font-size:clamp(34px,8vw,72px);line-height:1.05;font-weight:600;letter-spacing:-.02em;color:var(--hi);text-shadow:var(--glow);text-transform:lowercase}
+.wordmark span{display:inline-block;margin:0 .12em;font-size:.6em;vertical-align:.22em}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.patterns{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+.patterns th,.patterns td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+.patterns th{color:var(--dim);font-weight:400;border-bottom-color:var(--line-hi)}
+.patterns td:first-child{color:var(--dim);width:2.5em}
+.patterns .sev-critical{color:var(--bad)}
+.patterns .sev-high{color:var(--warn)}
+.patterns .sev-medium{color:var(--fg)}
+.patterns tbody tr:hover td{background:rgba(255,90,78,.06)}
+.patterns a{text-decoration:none}
+.prompt{white-space:pre-wrap;border:1px dashed var(--line-hi);padding:14px 16px;margin:14px 0}
+@media (max-width:640px){.patterns{font-size:13px}}

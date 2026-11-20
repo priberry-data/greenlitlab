@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>launch blockers: the ways AI-built apps leak data, checked before you launch</title>
+<meta name="description" content="The <!--n-->15<!--/n--> documented ways apps built with Lovable, Bolt, v0, Replit, Cursor or Claude Code leak their users' data, each on the public record, with a fix prompt and a check that stops the deploy. Free and open source.">
+<link rel="canonical" href="https://greenlit.priberry.com/blockers/">
+<meta name="theme-color" content="#0B0606">
+<link rel="icon" href="brand/icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/plex-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="launch blockers">
+<meta property="og:title" content="The <!--n-->15<!--/n--> ways AI-built apps leak their users' data">
+<meta property="og:description" content="Each one on the public record, with a fix prompt you paste into your builder and a check that stops the deploy. npx launch-blockers check">
+<meta property="og:url" content="https://greenlit.priberry.com/blockers/">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Launch Blockers","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"url":"https://greenlit.priberry.com/blockers/","codeRepository":"https://github.com/priberry-data/launch-blockers","author":{"@type":"Organization","name":"Priberry","url":"https://priberry.com"}}
+</script>
+<link rel="stylesheet" href="site.css?v=2">
+<link rel="stylesheet" href="extra.css?v=2">
+</head>
+<body>
+<a class="skip" href="#main">skip to content</a>
+
+<header class="bar" role="banner">
+  <a class="home" href="./" aria-label="launch blockers home"><span class="logo" aria-hidden="true">■</span>launch blockers<span class="dim ver"> <!--v-->0.1.0<!--/v--></span></a>
+  <nav aria-label="Sections">
+    <a href="#patterns"><kbd>1</kbd>patterns</a>
+    <a href="#guard"><kbd>2</kbd>guard</a>
+    <a href="#prompts"><kbd>3</kbd>fix</a>
+    <a href="#limits"><kbd>4</kbd>limits</a>
+    <a href="#faq"><kbd>5</kbd>faq</a>
+    <a href="#start"><kbd>6</kbd>start</a>
+  </nav>
+  <div class="right">
+    <span class="clock dim" aria-hidden="true">tty1 <span id="clock">--:--:--</span></span>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero" aria-labelledby="hero-title">
+  <pre class="boot dim" aria-hidden="true">launch-blockers v<!--v-->0.1.0<!--/v--> · (c) 2026 priberry
+patterns ............... <!--n-->15<!--/n--><span class="x">  each one on the public record</span>
+sources ................ linked<span class="x">  incidents, studies and the platforms' own rules</span>
+network ................ off<span class="x">  your code never leaves this machine</span>
+deploy ................. held<span class="x">  until the check says CLEAR</span></pre>
+
+  <h1 id="hero-title" class="wordmark">launch<span>■</span>blockers</h1>
+
+  <p class="tagline"><span class="p">&gt;</span> the <!--n-->15<!--/n--> ways AI-built apps leak their users' data, checked before you launch<span class="cursor" aria-hidden="true"></span></p>
+
+  <p class="lede">Built your app with Lovable, Bolt, v0, Replit, Cursor or Claude Code? These are the mistakes behind the leaks in the news: <b>open databases, keys in the browser, Firebase left in test mode</b>. Every pattern links to a dated incident or the platform's own rule (<!--mix-->11 from dated incidents or studies, 4 from the platform's own rules<!--/mix-->), comes with a fix prompt you paste into your builder, and has a check that runs before you deploy.</p>
+
+  <pre class="out install"><span class="p">$</span> <span data-copy>npx launch-blockers check</span></pre>
+  <div class="ctas">
+    <a class="key primary" href="#start">[ get started ]</a>
+    <a class="key" href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md">[ read the playbook ]</a>
+    <a class="key" href="https://github.com/priberry-data/launch-blockers">[ source on github ]</a>
+  </div>
+
+  <figure class="window run" aria-labelledby="run-cap">
+    <div class="title"><span>═ before the deploy ═</span><button class="replay" type="button" hidden>↻ replay</button></div>
+<pre class="out" id="run"><span class="p">$</span> npx launch-blockers check
+launch-blockers · <span class="bad">BLOCKED</span>
+
+2 things to fix before you launch:
+
+1. The secret VITE_OPENAI_API_KEY is named so it ships to the browser  <span class="bad">[critical]</span>
+   <span class="dim">src/ai.ts:1</span>
+   <span class="dim">Fix prompt: Rename it without the prefix, move every use of it into backend code…</span>
+
+2. The table "profiles" is created without Row Level Security  <span class="bad">[high]</span>
+   <span class="dim">supabase/migrations/20260101_init.sql:1</span>
+   <span class="dim">Fix prompt: Write a new migration that enables it and adds policies…</span>
+
+Not checked (CLEAR never covers these):
+  <span class="dim">- Your live database: npx greenlitlab &lt;your-app-url&gt; --mine</span>
+
+<span class="p">$</span> <span class="dim"># fix, then check again</span>
+launch-blockers · <span class="ok">CLEAR</span></pre>
+    <figcaption id="run-cap" class="dim">The sample project in the repo, before and after its two fixes. Everything is read on your computer; nothing is uploaded.</figcaption>
+  </figure>
+</section>
+
+<section class="window" aria-labelledby="why-t">
+  <h2 id="why-t" class="title"><span>═ why this exists ═</span></h2>
+  <ul class="plus">
+    <li><b>1.5 million API tokens and 35,000 emails</b> sat in a vibe-coded app's database with Row Level Security never switched on. <a href="https://www.wiz.io/blog/exposed-moltbook-database-reveals-millions-of-api-keys">Moltbook, Feb 2026 (Wiz)</a></li>
+    <li><b>24,664 of 34,545</b> Lovable projects using Supabase returned database records to a visitor with no login; some of it may be meant to be public. <a href="https://www.techzine.eu/news/security/145550/thousands-of-lovable-apps-are-leaking-personal-data/">Crissy Field, Nov 2026 (Techzine)</a></li>
+    <li><b>About 300 million messages</b> were exposed by a Firebase misconfiguration in an AI chat app. <a href="https://www.404media.co/massive-ai-chat-app-leaked-millions-of-users-private-conversations/">Jan 2026 (404 Media)</a></li>
+  </ul>
+  <p class="big">None of these needed a hacker. Each was one setting.</p>
+</section>
+
+<section id="patterns" class="window" aria-labelledby="patterns-t">
+  <h2 id="patterns-t" class="title"><span>═[1]═ the <!--n-->15<!--/n--> patterns</span></h2>
+  <p class="big">Each one has a source anyone can read. Numbers are the source's own, and caveats stay next to them in <a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md">the playbook</a>.</p>
+  <div class="scroll">
+<!--patterns-->
+<table class="patterns"><thead><tr><th scope="col">#</th><th scope="col">pattern</th><th scope="col">severity</th><th scope="col">found by</th><th scope="col">on the record</th></tr></thead><tbody>
+<tr><td>1</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#1-no-rls">Database tables with no Row Level Security</a></td><td class="sev-critical">critical</td><td>scan</td><td><a href="https://mattpalmer.io/posts/statement-on-CVE-2025-48757/">CVE-2025-48757: Lovable apps without working RLS (2025-05)</a></td></tr>
+<tr><td>2</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#2-open-policy">Row Level Security is on, but the rule checks nothing</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://mattpalmer.io/posts/statement-on-CVE-2025-48757/">CVE-2025-48757: Lovable apps without working RLS (2025-05)</a></td></tr>
+<tr><td>3</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#3-firebase-open-rules">Firebase rules that let anyone in (&quot;if true&quot; or test mode)</a></td><td class="sev-critical">critical</td><td>scan</td><td><a href="https://www.404media.co/massive-ai-chat-app-leaked-millions-of-users-private-conversations/">AI chat app exposes chat histories (2026-01)</a></td></tr>
+<tr><td>4</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#4-public-storage">File storage anyone can read (ID photos, documents, uploads)</a></td><td class="sev-critical">critical</td><td>scan</td><td><a href="https://www.404media.co/women-dating-safety-app-tea-breached-users-ids-posted-to-4chan/">Tea app: verification selfies and IDs exposed (2025-07)</a></td></tr>
+<tr><td>5</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#5-secret-in-frontend">A paid API key (OpenAI, Gemini, Stripe...) shipped in the browser code</a></td><td class="sev-critical">critical</td><td>scan</td><td><a href="https://cyble.com/blog/when-ai-secrets-go-public-chatgpt/">About 3,000 websites exposing ChatGPT keys (2026-02)</a></td></tr>
+<tr><td>6</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#6-service-role-in-frontend">The Supabase service_role (secret) key in the browser</a></td><td class="sev-critical">critical</td><td>scan</td><td><a href="https://supabase.com/docs/guides/api/api-keys">Rule: Supabase docs: API keys</a></td></tr>
+<tr><td>7</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#7-env-committed">The .env file committed to git</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://cyble.com/blog/when-ai-secrets-go-public-chatgpt/">5,000+ GitHub repositories with OpenAI keys committed (2026-02)</a></td></tr>
+<tr><td>8</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#8-unauthenticated-function">A backend function anyone on the internet can call</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://supabase.com/docs/guides/functions/function-configuration">Rule: Supabase docs: function configuration (verify_jwt)</a></td></tr>
+<tr><td>9</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#9-webhook-unverified">A payment webhook that believes anyone</a></td><td class="sev-medium">medium</td><td>scan</td><td><a href="https://docs.stripe.com/webhooks#verify-events">Rule: Stripe docs: verify webhook signatures</a></td></tr>
+<tr><td>10</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#10-backwards-access-check">An access check that's backwards or only in the browser</a></td><td class="sev-critical">critical</td><td>agent review</td><td><a href="https://www.theregister.com/2026/02/27/lovable_app_vulnerabilities">Lovable-showcased app with an inverted access check (2026-02)</a></td></tr>
+<tr><td>11</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#11-other-users-records">Change the number in the address, see someone else's data</a></td><td class="sev-critical">critical</td><td>agent review</td><td><a href="https://api-security.owasp.org/editions/2023/en/0xa1-broken-object-level-authorization">Rule: OWASP API Security Top 10: API1 Broken Object Level Authorization</a></td></tr>
+<tr><td>12</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#12-open-signup-private-app">A private app that still lets anyone sign up</a></td><td class="sev-high">high</td><td>agent review</td><td><a href="https://www.wiz.io/blog/critical-vulnerability-base44">Base44: anyone could join private apps (2025-07)</a></td></tr>
+<tr><td>13</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#13-internal-tool-public">An internal tool published to the open internet</a></td><td class="sev-high">high</td><td>agent review</td><td><a href="https://securityboulevard.com/2026/05/thousands-of-vibe-coded-apps-exposing-corporate-personal-data-redaccess/">RedAccess: thousands of public vibe-coded apps with company data (2026-05)</a></td></tr>
+<tr><td>14</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#14-agent-can-write-production">Your coding agent can change the production database</a></td><td class="sev-medium">medium</td><td>scan</td><td><a href="https://fortune.com/2025/07/23/ai-coding-tool-replit-wiped-database-called-it-a-catastrophic-failure/">Replit agent deletes a production database (2025-07)</a></td></tr>
+<tr><td>15</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#15-live-db-differs">The live database isn't what your files say</a></td><td class="sev-high">high</td><td>live check</td><td><a href="https://www.techzine.eu/news/security/145550/thousands-of-lovable-apps-are-leaking-personal-data/">Crissy Field scan of 159,041 Lovable projects (2026-11)</a></td></tr>
+</tbody></table>
+<!--/patterns-->
+  </div>
+  <p class="dim">found by: <b>scan</b> = <code>launch-blockers check</code> finds it in your files · <b>agent review</b> = the skill walks your coding agent through it · <b>live check</b> = only visible on the running app.</p>
+</section>
+
+<section id="guard" class="window" aria-labelledby="guard-t">
+  <h2 id="guard-t" class="title"><span>═[2]═ the deploy guard</span></h2>
+  <p class="big">One command adds a skill and a guard to Claude Code. From then on, a deploy waits for the check.</p>
+  <pre class="out install"><span class="p">$</span> <span data-copy>npx launch-blockers install</span></pre>
+  <dl class="man">
+    <dt><span class="bad">BLOCKED</span></dt>
+    <dd>The deploy is stopped. Your agent gets the reasons and the fix prompts, so it can fix them and try again.</dd>
+    <dt><span class="warn">NOT CHECKED</span></dt>
+    <dd>The check couldn't run, so you're asked. It never passes silently.</dd>
+    <dt><span class="ok">CLEAR</span></dt>
+    <dd>Nothing changes: your usual approval still applies, with a note of what wasn't checked.</dd>
+  </dl>
+  <p>It watches <code>vercel</code>, <code>netlify deploy</code>, <code>supabase db push</code>, <code>supabase functions deploy</code>, <code>firebase deploy</code>, <code>wrangler deploy</code>, <code>fly deploy</code>, <code>railway up</code> and <code>npm run deploy</code>, only when they're the command being run. A commit message that mentions a deploy is left alone.</p>
+  <p>Checked a finding yourself and it's fine, say Row Level Security switched on in the dashboard? Add its id and your reason to <code>.launch-blockers-ignore</code>. A line without a reason doesn't count, and ignored findings are always listed.</p>
+</section>
+
+<section id="prompts" class="window" aria-labelledby="prompts-t">
+  <h2 id="prompts-t" class="title"><span>═[3]═ fix prompts</span></h2>
+  <p class="big">Most people building with AI fix things by asking. So every pattern comes with the exact request to paste into Lovable, Bolt, Cursor or Claude Code.</p>
+<pre class="out prompt"><span class="dim"># pattern 3 · Firebase rules that let anyone in</span>
+Rewrite my Firebase security rules so no rule uses if true or the
+test-mode date check. A signed-in user should reach only their own
+documents (request.auth != null && request.auth.uid == the owner
+field or path segment). Keep anything truly public read-only and tell
+me which it is. Show me the new rules and how to test them in the
+Firebase emulator before deploying.</pre>
+  <p class="dim">Not a developer? <a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md">Open the playbook</a> and work down the list. Ten minutes, no terminal.</p>
+</section>
+
+<section id="limits" class="window" aria-labelledby="limits-t">
+  <h2 id="limits-t" class="title"><span>═[4]═ what it can't see</span></h2>
+  <ul class="plus">
+    <li><b>Your live database</b>, if rules were changed in the Supabase or Firebase console. Run <code data-copy>npx greenlitlab yourapp.com --mine</code> on your own app: it counts which tables a stranger can read and never reads the data.</li>
+    <li><b>Logic mistakes in your own code</b>, like an access check that's the wrong way round. That's why the skill has your agent review them by hand.</li>
+    <li><b>Anything new.</b> CLEAR means none of the known patterns matched. It doesn't mean safe.</li>
+  </ul>
+</section>
+
+<section id="faq" class="window" aria-labelledby="faq-t">
+  <h2 id="faq-t" class="title"><span>═[5]═ faq</span></h2>
+  <div class="faq">
+    <details><summary>Does my code get uploaded?</summary><p>No. Everything runs on your computer. Names in <code>.env</code> files are read, never values.</p></details>
+    <details><summary>Does it work with Lovable or Bolt, where I don't use a terminal?</summary><p>Yes, through the playbook: each pattern's fix prompt is written to paste into your builder. To check the live app from outside, use <a href="https://greenlit.priberry.com">Greenlit</a>, our free grade for AI-built apps.</p></details>
+    <details><summary>Which coding agents does the guard work with?</summary><p>The deploy guard is for Claude Code today. The skill file works in any agent that reads skills, and <code>launch-blockers check</code> works anywhere Node 20 runs, including CI (exit code 1 when blocked).</p></details>
+    <details><summary>Can I check someone else's app?</summary><p>No. Check only what you own. The live check reads only what the app's own public key can reach, and still, only point it at your own app.</p></details>
+    <details><summary>How do I add a pattern?</summary><p>Open an issue with a public link: an incident write-up, a study or the platform's own documentation. Patterns go in only with a source anyone can read.</p></details>
+    <details><summary>Who makes this?</summary><p><a href="https://priberry.com">Priberry</a>. The scanning is <a href="https://github.com/priberry-data/greenlitlab">Greenlit</a>'s project scan. Apache-2.0.</p></details>
+  </div>
+</section>
+
+<section id="start" class="window" aria-labelledby="start-t">
+  <h2 id="start-t" class="title"><span>═[6]═ get started</span></h2>
+  <p class="big">Free and open source. Needs Node 20 or newer, nothing else.</p>
+  <dl class="man">
+    <dt><span class="p">$</span> <span data-copy>npx launch-blockers check</span></dt>
+    <dd>BLOCKED, CLEAR or NOT CHECKED for the project in this folder. Add <code>--json</code> for CI.</dd>
+    <dt><span class="p">$</span> <span data-copy>npx launch-blockers install</span></dt>
+    <dd>The skill and the deploy guard for Claude Code, in this project. Add <code>--global</code> for every project.</dd>
+    <dt><span class="p">$</span> <span data-copy>npx launch-blockers list</span></dt>
+    <dd>Every pattern, with the incident behind it.</dd>
+    <dt><span class="p">$</span> <span data-copy>npx greenlitlab yourapp.com --mine</span></dt>
+    <dd>The live check, for your own app.</dd>
+  </dl>
+  <p class="dim">Version <!--v-->0.1.0<!--/v-->. Tell us what breaks: <a href="mailto:hello@priberry.com?subject=launch%20blockers">hello@priberry.com</a> · <a href="https://github.com/priberry-data/launch-blockers/issues">github issues</a></p>
+</section>
+
+</main>
+
+<footer class="bar foot">
+  <span>© 2026 <a href="https://priberry.com">priberry</a> · part of <a href="/">greenlit</a>, the free safety grade for AI-built apps · also: <a href="https://crumple.priberry.com">crumple</a> · <a href="https://tare.priberry.com">tare</a></span>
+  <span><a href="mailto:hello@priberry.com">hello@priberry.com</a> · <a href="https://priberry.com/privacy/">privacy</a></span>
+  <span class="dim">no cookies · no ad trackers · visits counted cookie-free by Cloudflare Web Analytics</span>
+  <span class="dim legal">Lovable, Bolt, v0, Replit, Cursor, Claude Code, Supabase and Firebase are trademarks of their owners. Launch Blockers is independent and not affiliated with any of them.</span>
+</footer>
+<script src="site.js?v=2" defer></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "a18f85d41ea64b02bb47e6ca80b4f81c"}'></script>
+</body>
+</html>

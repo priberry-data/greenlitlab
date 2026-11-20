@@ -1,0 +1,214 @@
+@font-face{font-family:"Plex Mono";src:url(fonts/plex-mono-400.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Plex Mono";src:url(fonts/plex-mono-600.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"Plex Sans";src:url(fonts/plex-sans.woff2) format("woff2");font-weight:100 700;font-display:swap}
+
+/* Amber phosphor, like a receipt printer's display: one amber at four brightnesses. Green only ever means money saved. */
+:root{
+  --bg:#0B0606; --bg-2:#050303; --fg:#F4DCD6; --hi:#FF5A4E; --dim:#A27770; --line:#3E1D1A; --line-hi:#74302A;
+  --bad:#FF5A4E; --warn:#FF9F40; --ok:#7CE38B;
+  --glow:0 0 6px rgba(255,90,78,.45);
+  --max:1040px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:64px;background:var(--bg)}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 15px/1.65 "Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased;font-variant-ligatures:none}
+::selection{background:var(--hi);color:var(--bg)}
+a{color:var(--hi);text-underline-offset:3px;text-decoration-thickness:1px}
+a:hover{background:var(--hi);color:var(--bg);text-decoration:none}
+:focus-visible{outline:2px solid var(--hi);outline-offset:3px}
+code{color:var(--hi);font-family:inherit}
+b{font-weight:600;color:var(--hi)}
+pre{font-family:inherit;margin:0}
+.dim{color:var(--dim)}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.p{color:var(--hi)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:-999px;top:8px;background:var(--hi);color:var(--bg);padding:6px 10px;z-index:20}.skip:focus{left:8px}
+
+/* The glass: faint scanlines and a vignette over everything. Never animated, so nothing flickers. */
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:30;
+  background:repeating-linear-gradient(to bottom,transparent 0 2px,rgba(0,0,0,.16) 2px 3px),
+             radial-gradient(ellipse at center,transparent 62%,rgba(0,0,0,.55) 100%)}
+
+/* Status bars, top and bottom, like a TUI. */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 20px;max-width:none}
+header.bar{position:sticky;top:0;z-index:10;height:48px;background:rgba(11,6,6,.92);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.home{display:flex;align-items:center;gap:10px;color:var(--fg);text-decoration:none;font-weight:600}
+.home:hover{background:none;color:var(--hi)}
+.logo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--hi);color:var(--bg);font-weight:600;font-size:15px;line-height:1;box-shadow:var(--glow)}
+.logo i{display:inline-block;width:5px;height:13px;margin-left:1px;background:var(--bg)}
+nav{display:flex;gap:18px}
+nav a{color:var(--fg);text-decoration:none;white-space:nowrap}
+nav a:hover{background:none;color:var(--hi)}
+kbd{font-family:inherit;font-size:13px;background:var(--line);color:var(--hi);padding:0 5px;margin-right:6px}
+nav a:hover kbd{background:var(--hi);color:var(--bg)}
+@media (max-width:1180px){.clock{display:none}}
+@media (max-width:860px){.ver{display:none}nav{gap:12px}}
+@media (max-width:760px){.clock,.ver{display:none}nav{gap:10px}nav a{font-size:0}nav a kbd{font-size:13px;margin:0;padding:2px 7px}}
+
+main{max-width:var(--max);margin:0 auto;padding:0 20px}
+
+/* Hero */
+.hero{padding:44px 0 24px}
+.boot{font-size:12.5px;line-height:1.7;margin-bottom:36px;white-space:pre;overflow:hidden}
+@media (max-width:640px){.boot .x{display:none}}
+h1{margin:0}
+.banner{display:block;width:min(640px,100%);height:auto;filter:drop-shadow(0 0 7px rgba(255,90,78,.35))}
+.tagline{font-size:clamp(18px,2.6vw,26px);color:var(--hi);text-shadow:var(--glow);margin:28px 0 18px}
+.cursor{display:inline-block;width:.6em;height:1.05em;margin-left:.15em;vertical-align:-.17em;background:var(--hi);box-shadow:var(--glow);animation:blink 1.06s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.lede{font-size:clamp(16px,1.7vw,18px);max-width:64ch;margin:0 0 28px}
+.ctas{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 8px}
+.key{display:inline-block;padding:9px 4px;color:var(--hi);text-decoration:none;font-weight:600;white-space:nowrap}
+.key:hover{background:var(--hi);color:var(--bg)}
+.key.primary{background:var(--hi);color:var(--bg);padding:9px 12px;box-shadow:var(--glow)}
+.key.primary:hover{background:#FFB3AC}
+
+/* Windows: double-ruled frames with the title cut into the top edge. */
+.window{position:relative;border:3px double var(--line-hi);padding:34px 28px 28px;margin:64px 0}
+.title{position:absolute;top:-.85em;left:14px;right:14px;display:flex;justify-content:space-between;margin:0;font-size:15px;font-weight:600;line-height:1.6;pointer-events:none}
+.title span,.title button{background:var(--bg);padding:0 8px;color:var(--hi);pointer-events:auto}
+.big{font-size:clamp(17px,1.9vw,20px);line-height:1.55;color:var(--fg);max-width:62ch;margin:0 0 28px}
+@media (max-width:600px){.window{padding:30px 16px 20px;margin:52px 0}}
+
+.install{display:inline-block;margin:0 0 22px;padding-right:12px}
+.install .copy{margin-left:14px}
+.run{margin-top:48px}
+.out{background:var(--bg-2);border:1px solid var(--line);padding:18px 20px;font-size:13px;line-height:1.7;overflow-x:auto;white-space:pre}
+.run .out{border:0;padding:6px 0 0;background:none}
+figcaption{font-size:13px;margin-top:16px}
+.replay{font:inherit;font-size:13px;border:0;cursor:pointer}
+.replay:hover{background:var(--hi);color:var(--bg)}
+.typing .ln{visibility:hidden}.typing .ln.on{visibility:visible}
+
+/* man-page style command list */
+.man{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:22px 40px}
+.man dt{color:var(--hi);font-weight:600;white-space:nowrap}
+.man dd{margin:0;max-width:64ch}
+@media (max-width:700px){.man{grid-template-columns:1fr;gap:6px}.man dd{margin-bottom:18px}}
+
+/* crumple list */
+.list{width:100%;border-collapse:collapse;font-size:14px}
+.list th{text-align:left;font-weight:400;color:var(--dim);padding:0 18px 8px 0;border-bottom:1px solid var(--line-hi)}
+.list td{padding:9px 18px 9px 0;border-bottom:1px dashed var(--line);vertical-align:top}
+.list td:first-child{color:var(--hi);white-space:nowrap}
+.list td:last-child{color:var(--dim)}
+.list tbody tr:hover td{background:rgba(255,90,78,.06)}
+@media (max-width:760px){.list thead{display:none}.list tr{display:block;padding:10px 0;border-bottom:1px dashed var(--line)}.list td{display:block;border:0;padding:0}}
+.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:16px 28px;margin-top:28px;font-size:14px}
+.legend p{margin:0}.legend b{display:block}
+.legend .ok{color:var(--ok)}.legend .warn{color:var(--warn)}.legend .bad{color:var(--bad)}
+@media (max-width:760px){.legend{grid-template-columns:1fr}}
+
+.plus{list-style:none;margin:0 0 32px;padding:0;max-width:72ch}
+.plus li{padding-left:2ch;text-indent:-2ch;margin:0 0 14px}
+.plus li::before{content:"+ ";color:var(--hi)}
+.indep{border-top:1px dashed var(--line);padding-top:24px;margin:0;color:var(--hi)}
+
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.plan{border:1px solid var(--line);padding:20px}
+.plan.hot{border-color:var(--hi);box-shadow:var(--glow),inset 0 0 18px rgba(255,90,78,.06)}
+.plan h3{margin:0;font-size:17px;font-weight:600;color:var(--hi)}
+.price{margin:0 0 14px;color:var(--dim)}
+.plan ul{list-style:none;margin:0;padding:0;font-size:14px}
+.plan li{padding-left:2ch;text-indent:-2ch;margin:6px 0}
+.plan li::before{content:"- ";color:var(--dim)}
+@media (max-width:860px){.plans{grid-template-columns:1fr}}
+
+.mail{margin:0 0 22px}
+.mail a{color:var(--hi)}
+
+footer.bar{flex-wrap:wrap;gap:6px 24px;padding:18px 20px 28px;border-top:1px solid var(--line);font-size:13px;margin-top:40px}
+footer a{color:var(--fg)}
+@media (prefers-reduced-motion:reduce){.cursor{animation:none}}
+
+/* Header controls */
+.right{display:flex;align-items:center;gap:16px}
+.modes{display:flex;border:1px solid var(--line-hi)}
+.modes[hidden]{display:none}
+.modes button{font:inherit;font-size:13px;background:none;border:0;color:var(--dim);padding:3px 9px;cursor:pointer}
+.modes button[aria-pressed="true"]{background:var(--hi);color:var(--bg)}
+.modes button:not([aria-pressed="true"]):hover{color:var(--hi)}
+.copy{font:inherit;font-size:12px;background:none;border:0;color:var(--dim);cursor:pointer;margin-left:10px;padding:0 4px;vertical-align:1px}
+.copy:hover{background:var(--hi);color:var(--bg)}
+button.key{font:inherit;font-weight:600;background:none;border:0;cursor:pointer}
+
+/* Reports */
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.cards figure{margin:0}
+.cards img{display:block;width:100%;height:auto;border:1px solid var(--line)}
+.cards figcaption{font-size:12.5px;margin-top:8px}
+.note{font-size:13px;margin:14px 0 0}
+.published{border:1px dashed var(--line-hi);padding:18px 20px;margin:32px 0}
+.published h3,h3.sub{margin:0 0 10px;font-size:15px;font-weight:600;color:var(--hi)}
+.published p{margin:0;max-width:72ch}
+h3.sub{margin-top:8px}
+.method{margin-bottom:0}
+@media (max-width:760px){.cards{grid-template-columns:1fr}}
+
+/* FAQ */
+.faq details{border-bottom:1px dashed var(--line);padding:12px 0}
+.faq details:first-child{padding-top:0}
+.faq summary{cursor:pointer;color:var(--hi);list-style:none}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::before{content:"[+] ";color:var(--dim)}
+.faq details[open] summary::before{content:"[-] "}
+.faq p{margin:10px 0 4px 4ch;max-width:70ch}
+.legal{flex-basis:100%;font-size:12px}
+
+/* Two ways to read the page. Dev is the terminal; public is the same page printed as a lab report. */
+.pub{display:none}
+[data-mode="public"] .dev{display:none}
+[data-mode="public"] .pub{display:revert}
+[data-mode="public"]{
+  --bg:#F3F0E8; --bg-2:#EAE6DB; --fg:#1B1B18; --hi:#7A4E00; --dim:#5F5C53; --line:#CFC9BA; --line-hi:#1B1B18;
+  --bad:#B3261E; --warn:#8A5A00; --ok:#7A4E00; --glow:none;
+}
+[data-mode="public"] body{font-family:"Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:17px;line-height:1.6}
+[data-mode="public"] body::after{display:none}
+[data-mode="public"] header.bar{background:rgba(243,240,232,.94)}
+[data-mode="public"] .bar,[data-mode="public"] .title,[data-mode="public"] .key,[data-mode="public"] kbd,
+[data-mode="public"] .legend b,[data-mode="public"] .price,[data-mode="public"] .plan h3,[data-mode="public"] figcaption,
+[data-mode="public"] .list th,[data-mode="public"] .published h3,[data-mode="public"] h3.sub,[data-mode="public"] code,
+[data-mode="public"] .man dt{font-family:"Plex Mono",ui-monospace,Menlo,monospace}
+[data-mode="public"] .banner{filter:brightness(0);opacity:.92}
+[data-mode="public"] .tagline{font-size:clamp(24px,3.4vw,34px);font-weight:600;line-height:1.25;color:var(--fg);text-shadow:none;max-width:24ch}
+[data-mode="public"] b,[data-mode="public"] code{color:var(--fg)}
+[data-mode="public"] .big{font-size:clamp(18px,2vw,21px)}
+[data-mode="public"] .indep{color:var(--fg);font-weight:600}
+[data-mode="public"] .key.primary{color:#F3F0E8}
+[data-mode="public"] .key.primary:hover{background:var(--fg)}
+[data-mode="public"] .plan.hot{border-width:2px;border-color:var(--fg);box-shadow:none}
+[data-mode="public"] .list td:last-child{color:var(--dim)}
+[data-mode="public"] .faq summary{color:var(--fg);font-weight:600}
+[data-mode="public"] kbd{background:var(--bg-2);color:var(--fg)}
+
+@media print{
+  body::after,header.bar,.ctas,.replay,.copy{display:none}
+  .window{break-inside:avoid}
+}
+.lost{min-height:100vh;display:grid;place-items:center;padding:20px}
+.lost .out{font-size:15px;border:3px double var(--line-hi);padding:28px 32px;max-width:100%}
+
+/* Phones: logo and mode switch on top, the sections as a swipeable row of words underneath.
+   Number keys need a keyboard, so the numbers go and the words come back. */
+@media (max-width:640px){
+  html{scroll-padding-top:92px}
+  header.bar{flex-wrap:wrap;height:auto;padding:8px 16px 0;gap:0 12px}
+  .right{margin-left:auto}
+  nav{order:3;flex-basis:100%;gap:10px;justify-content:space-between;overflow-x:auto;padding:8px 0 9px;margin-top:6px;border-top:1px solid var(--line);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  nav::-webkit-scrollbar{display:none}
+  nav a{font-size:13.5px}
+  nav a kbd{display:none}
+  main{padding:0 16px}
+  .window{padding:30px 14px 18px}
+  .title{left:8px;right:8px;font-size:14px}
+  .bar.foot{padding:16px 16px 24px}
+  .run{margin-bottom:0}
+  .out{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;padding:14px}
+  .run .out{padding:6px 0 0;white-space:pre;overflow-wrap:normal;font-size:11.5px}
+}
+
+/* Tare: a shorter word, so a smaller banner; and the receipt block. */
+.banner{width:min(400px,100%)}
+.receipt{margin:8px 0 12px;padding:16px 18px;border:1px dashed var(--line-hi);max-width:60ch;overflow-x:auto}
