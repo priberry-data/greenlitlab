@@ -231,3 +231,11 @@ h2 { font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.035em; line-height:
 .owner .copy { margin-bottom: 10px; }
 .owner .small { font-size: 13px; color: var(--ink-2); }
 .owner pre { margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--line, #ccc); border-radius: 6px; overflow-x: auto; font-size: 14px; }
+/* Builder logos in the hero */
+.builders { margin: 0 0 22px; }
+.builders .eyebrow { margin: 0 0 10px; }
+.logos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; color: var(--ink-2); }
+.logos li { display: inline-flex; align-items: center; gap: 7px; font: 600 15px/1 var(--sans); letter-spacing: -0.01em; }
+.logos svg { height: 18px; width: auto; fill: currentColor; display: block; }
+.logos .wm svg { height: 20px; }
+.logos .wide svg { height: 15px; }
