@@ -4,22 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>launch blockers: the ways AI-built apps leak data, checked before you launch</title>
-<meta name="description" content="The <!--n-->15<!--/n--> documented ways apps built with Lovable, Bolt, v0, Replit, Cursor or Claude Code leak their users' data, each on the public record, with a fix prompt and a check that stops the deploy. Free and open source.">
+<meta name="description" content="The <!--n-->18<!--/n--> documented ways apps built with Lovable, Bolt, v0, Replit, Cursor or Claude Code leak their users' data, each on the public record, with a fix prompt and a check that stops the deploy. Free and open source.">
 <link rel="canonical" href="https://greenlit.priberry.com/blockers/">
 <meta name="theme-color" content="#0B0606">
 <link rel="icon" href="brand/icon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/plex-mono-400.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="launch blockers">
-<meta property="og:title" content="The <!--n-->15<!--/n--> ways AI-built apps leak their users' data">
+<meta property="og:title" content="The <!--n-->18<!--/n--> ways AI-built apps leak their users' data">
 <meta property="og:description" content="Each one on the public record, with a fix prompt you paste into your builder and a check that stops the deploy. npx launch-blockers check">
 <meta property="og:url" content="https://greenlit.priberry.com/blockers/">
-<meta property="og:image" content="https://greenlit.priberry.com/blockers/og.png">
+<meta property="og:image" content="https://greenlit.priberry.com/blockers/og.png?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Launch Blockers","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"url":"https://greenlit.priberry.com/blockers/","codeRepository":"https://github.com/priberry-data/launch-blockers","author":{"@type":"Organization","name":"Priberry","url":"https://priberry.com"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Launch Blockers","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"url":"https://greenlit.priberry.com/blockers/","codeRepository":"https://github.com/priberry-data/launch-blockers","author":{"@type":"Organization","name":"Priberry","url":"https://priberry.com"}}
 </script>
 <link rel="stylesheet" href="site.css?v=3">
 <link rel="stylesheet" href="extra.css?v=3">
@@ -28,7 +28,7 @@
 <a class="skip" href="#main">skip to content</a>
 
 <header class="bar" role="banner">
-  <a class="home" href="./" aria-label="launch blockers home"><span class="logo" aria-hidden="true">■</span>launch blockers<span class="dim ver"> <!--v-->0.1.0<!--/v--></span></a>
+  <a class="home" href="./" aria-label="launch blockers home"><span class="logo" aria-hidden="true">■</span>launch blockers<span class="dim ver"> <!--v-->0.2.0<!--/v--></span></a>
   <nav aria-label="Sections">
     <a href="#patterns"><kbd>1</kbd>patterns</a>
     <a href="#guard"><kbd>2</kbd>guard</a>
@@ -45,17 +45,17 @@
 <main id="main">
 
 <section class="hero" aria-labelledby="hero-title">
-  <pre class="boot dim" aria-hidden="true">launch-blockers v<!--v-->0.1.0<!--/v--> · (c) 2026 priberry
-patterns ............... <!--n-->15<!--/n--><span class="x">  each one on the public record</span>
+  <pre class="boot dim" aria-hidden="true">launch-blockers v<!--v-->0.2.0<!--/v--> · (c) 2026 priberry
+patterns ............... <!--n-->18<!--/n--><span class="x">  each one on the public record</span>
 sources ................ linked<span class="x">  incidents, studies and the platforms' own rules</span>
-network ................ off<span class="x">  your code never leaves this machine</span>
-deploy ................. held<span class="x">  until the check says CLEAR</span></pre>
+network ................ off<span class="x">  nothing is sent or downloaded at deploy time</span>
+deploy ................. held<span class="x">  while anything serious is open</span></pre>
 
   <h1 id="hero-title" class="wordmark">launch<span>■</span>blockers</h1>
 
-  <p class="tagline"><span class="p">&gt;</span> the <!--n-->15<!--/n--> ways AI-built apps leak their users' data, checked before you launch<span class="cursor" aria-hidden="true"></span></p>
+  <p class="tagline"><span class="p">&gt;</span> the <!--n-->18<!--/n--> ways AI-built apps leak their users' data, checked before you launch<span class="cursor" aria-hidden="true"></span></p>
 
-  <p class="lede">Built your app with Lovable, Bolt, v0, Replit, Cursor or Claude Code? These are the mistakes behind the leaks in the news: <b>open databases, keys in the browser, Firebase left in test mode</b>. Every pattern links to a dated incident or the platform's own rule (<!--mix-->11 from dated incidents or studies, 4 from the platform's own rules<!--/mix-->), comes with a fix prompt you paste into your builder, and has a check that runs before you deploy.</p>
+  <p class="lede">Built your app with Lovable, Bolt, v0, Replit, Cursor or Claude Code? These are the mistakes behind the leaks in the news: <b>open databases, keys in the browser, Firebase left in test mode</b>. Every pattern links to a dated incident or the platform's own rule (<!--mix-->12 from dated incidents or studies, 6 from the platform's own rules<!--/mix-->), comes with a fix prompt you paste into your builder, and has a check that runs before you deploy.</p>
 
   <pre class="out install"><span class="p">$</span> <span data-copy>npx launch-blockers check</span></pre>
   <div class="ctas">
@@ -100,7 +100,7 @@ launch-blockers · <span class="ok">CLEAR</span></pre>
 </section>
 
 <section id="patterns" class="window" aria-labelledby="patterns-t">
-  <h2 id="patterns-t" class="title"><span>═[1]═ the <!--n-->15<!--/n--> patterns</span></h2>
+  <h2 id="patterns-t" class="title"><span>═[1]═ the <!--n-->18<!--/n--> patterns</span></h2>
   <p class="big">Each one has a source anyone can read. Numbers are the source's own, and caveats stay next to them in <a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md">the playbook</a>.</p>
   <div class="scroll">
 <!--patterns-->
@@ -120,6 +120,9 @@ launch-blockers · <span class="ok">CLEAR</span></pre>
 <tr><td>13</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#13-internal-tool-public">An internal tool published to the open internet</a></td><td class="sev-high">high</td><td>agent review</td><td><a href="https://securityboulevard.com/2026/05/thousands-of-vibe-coded-apps-exposing-corporate-personal-data-redaccess/">RedAccess: thousands of public vibe-coded apps with company data (2026-05)</a></td></tr>
 <tr><td>14</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#14-agent-can-write-production">Your coding agent can change the production database</a></td><td class="sev-medium">medium</td><td>scan</td><td><a href="https://fortune.com/2025/07/23/ai-coding-tool-replit-wiped-database-called-it-a-catastrophic-failure/">Replit agent deletes a production database (2025-07)</a></td></tr>
 <tr><td>15</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#15-live-db-differs">The live database isn't what your files say</a></td><td class="sev-high">high</td><td>live check</td><td><a href="https://www.techzine.eu/news/security/145550/thousands-of-lovable-apps-are-leaking-personal-data/">Crissy Field scan of 159,041 Lovable projects (2026-11)</a></td></tr>
+<tr><td>16</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#16-hardcoded-auth-secret">The secret that signs logins is written into the code</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://www.invicti.com/blog/security-labs/security-issues-in-vibe-coded-web-apps-analyzed">Invicti: the same secrets across 20,656 AI-generated apps (2025-11)</a></td></tr>
+<tr><td>17</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#17-rls-user-metadata">A database rule trusts what users can change about themselves</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://supabase.com/docs/guides/database/database-linter?lint=0015_rls_references_user_metadata">Rule: Supabase Security Advisor: lint 0015, RLS references user metadata</a></td></tr>
+<tr><td>18</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#18-definer-skips-rls">A view or database function that skips Row Level Security</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://supabase.com/docs/guides/database/database-linter?lint=0010_security_definer_view">Rule: Supabase Security Advisor: lint 0010, security definer view</a></td></tr>
 </tbody></table>
 <!--/patterns-->
   </div>
@@ -138,8 +141,8 @@ launch-blockers · <span class="ok">CLEAR</span></pre>
     <dt><span class="ok">CLEAR</span></dt>
     <dd>Nothing changes: your usual approval still applies, with a note of what wasn't checked.</dd>
   </dl>
-  <p>It watches <code>vercel</code>, <code>netlify deploy</code>, <code>supabase db push</code>, <code>supabase functions deploy</code>, <code>firebase deploy</code>, <code>wrangler deploy</code>, <code>fly deploy</code>, <code>railway up</code> and <code>npm run deploy</code>, only when they're the command being run. A commit message that mentions a deploy is left alone.</p>
-  <p>Checked a finding yourself and it's fine, say Row Level Security switched on in the dashboard? Add its id and your reason to <code>.launch-blockers-ignore</code>. A line without a reason doesn't count, and ignored findings are always listed.</p>
+  <p>It reads the command the way your shell will: <code>vercel</code>, <code>netlify deploy</code>, <code>supabase db push</code>, <code>firebase deploy</code>, <code>wrangler deploy</code>, <code>fly deploy</code>, <code>railway up</code> and about 30 more, including behind <code>npx</code>, <code>sudo</code>, <code>bash -c</code>, a shell script, or an <code>npm run</code> script that deploys. A <code>git push</code> to main on a host that deploys from git asks you first, and so do MCP tools that deploy. It checks the folder being deployed, not just the one you're in. A commit message that mentions a deploy is left alone.</p>
+  <p>Checked a finding yourself and it's fine, say Row Level Security switched on in the dashboard? Add its id and your reason to <code>.launch-blockers-ignore</code>. A line without a reason doesn't count. When a serious finding is ignored, you're asked before the deploy, with your reason shown. Your agent is told never to write that file itself.</p>
 </section>
 
 <section id="prompts" class="window" aria-labelledby="prompts-t">
@@ -169,7 +172,7 @@ Firebase emulator before deploying.</pre>
   <div class="faq">
     <details><summary>Does my code get uploaded?</summary><p>No. Everything runs on your computer. Names in <code>.env</code> files are read, never values.</p></details>
     <details><summary>Does it work with Lovable or Bolt, where I don't use a terminal?</summary><p>Yes, through the playbook: each pattern's fix prompt is written to paste into your builder. To check the live app from outside, use <a href="https://greenlit.priberry.com">Greenlit</a>, our free grade for AI-built apps.</p></details>
-    <details><summary>Which coding agents does the guard work with?</summary><p>The deploy guard is for Claude Code today. The skill file works in any agent that reads skills, and <code>launch-blockers check</code> works anywhere Node 20 runs, including CI (exit code 1 when blocked).</p></details>
+    <details><summary>Which coding agents does the guard work with?</summary><p>The deploy guard is for Claude Code today, on macOS and Linux (Windows isn't verified yet). The skill is also written to <code>.agents/skills</code>, which Codex, Cursor, Gemini CLI and Copilot read, and <code>launch-blockers check</code> works anywhere Node 20 runs, including CI (exit code 1 when blocked).</p></details>
     <details><summary>Can I check someone else's app?</summary><p>No. Check only what you own. The live check reads only what the app's own public key can reach, and still, only point it at your own app.</p></details>
     <details><summary>How do I add a pattern?</summary><p>Open an issue with a public link: an incident write-up, a study or the platform's own documentation. Patterns go in only with a source anyone can read.</p></details>
     <details><summary>Who makes this?</summary><p><a href="https://priberry.com">Priberry</a>. The scanning is <a href="https://github.com/priberry-data/greenlitlab">Greenlit</a>'s project scan. Apache-2.0.</p></details>
@@ -189,7 +192,7 @@ Firebase emulator before deploying.</pre>
     <dt><span class="p">$</span> <span data-copy>npx greenlitlab yourapp.com --mine</span></dt>
     <dd>The live check, for your own app.</dd>
   </dl>
-  <p class="dim">Version <!--v-->0.1.0<!--/v-->. Tell us what breaks: <a href="mailto:hello@priberry.com?subject=launch%20blockers">hello@priberry.com</a> · <a href="https://github.com/priberry-data/launch-blockers/issues">github issues</a></p>
+  <p class="dim">Version <!--v-->0.2.0<!--/v-->. Tell us what breaks: <a href="mailto:hello@priberry.com?subject=launch%20blockers">hello@priberry.com</a> · <a href="https://github.com/priberry-data/launch-blockers/issues">github issues</a></p>
 </section>
 
 </main>

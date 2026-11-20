@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.4.4 (unreleased)
+## 0.5.0 (unreleased)
+
+`greenlit scan` was rebuilt after an adversarial audit of the project scan that Launch Blockers runs before deploys.
+
+- **SQL is read statement by statement, in the order the migrations run.** Row Level Security switched off again, tables dropped or renamed, and policies altered, renamed or dropped are all followed, so a later migration that undoes a fix is caught. A rule that only asks whether someone is signed in (`auth.uid() is not null`) is treated like `true`: any account passes it. Restrictive policies and policies for the service role alone are left out.
+- **New checks:** public storage buckets (from migrations and `supabase/config.toml`, critical when the name says IDs or documents), `storage.objects` policies with no owner check, views that skip Row Level Security or read `auth.users`, SECURITY DEFINER functions anyone can call (high when they run SQL built from text), rules that trust `user_metadata`, keys recognised by their shape (Stripe, OpenAI, Anthropic, AWS, GitHub and others; reported by kind and line, never the value), a Supabase key whose role is service_role written into code, `dangerouslyAllowBrowser: true`, login secrets written into code or used as a fallback, Google `AIza` keys in browser code of a project that uses Gemini, Firebase `request.auth != null` on a catch-all path and on a whole Realtime Database, and Stripe routes that act on a request body without a signature check, whatever the file is called.
+- **Fewer misses:** a `.env` committed at the top of the repository is found when a subfolder is checked; symlinked folders are followed once; Firebase rules with no semicolon or with `true ||` are read; `verify_jwt` is read from TOML with comments and quoted names; table protection switched on by a fixed statement inside `execute` counts.
+- **Fewer false alarms:** other checkouts inside the project (git worktrees, submodules) are skipped; files that run on a server (TanStack server functions, anything reading `process.env`, `.server`/`.nitro` files) aren't treated as browser code; a private-key header in a regex isn't a key.
+- **It says what it couldn't read:** results include `truncated` (more than 20,000 files), `unread` (a rules or config file too big to read) and `gitUnavailable`. Firebase finding ids now come from the rule, not its line number, so an ignore entry survives edits above it.
+
+## 0.4.4 (20 November 2026)
 
 - `greenlit scan` no longer raises an alarm for `verify_jwt = false` on a webhook whose code verifies the sender's signature (Stripe, Svix, GitHub and others): it's reported as low, to confirm the check runs first.
 - `greenlit scan` reads Firebase rules: `firestore.rules`, `storage.rules` and `database.rules.json`. A rule of `if true`, or Firebase's test-mode date rule, is reported with a fix prompt (critical for database data and anything writable, high for a public read of files, which may be intended). Open Firebase rules are a common cause of leaks from mobile and AI apps.
