@@ -14,3 +14,13 @@
 .patterns a{text-decoration:none}
 .prompt{white-space:pre-wrap;border:1px dashed var(--line-hi);padding:14px 16px;margin:14px 0}
 @media (max-width:640px){.patterns{font-size:13px}}
+
+/* Logos of the tools it works with */
+.works{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:14px 0 4px}
+.works-label{color:var(--dim);font-size:13px}
+.works-logos{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;color:var(--fg)}
+.works-logos li{display:inline-flex;align-items:center;gap:7px;font-size:14px;line-height:1}
+.works-logos svg{height:17px;width:auto;fill:currentColor;display:block;flex:none}
+.works-logos li:only-child svg,.works-logos li>svg:only-child{height:19px}
+@media (max-width:640px){.window .out{white-space:pre-wrap;overflow-wrap:anywhere}}
+@media (max-width:700px){.man{grid-template-columns:minmax(0,1fr)}.man dt{white-space:normal;overflow-wrap:anywhere}}
