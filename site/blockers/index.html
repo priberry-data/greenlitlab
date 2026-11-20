@@ -70,7 +70,7 @@ deploy ................. held<span class="x">  while anything serious is open</s
 <pre class="out" id="run"><span class="p">$</span> npx launch-blockers check
 launch-blockers · <span class="bad">BLOCKED</span>
 
-2 things to fix before you launch:
+3 things to fix before you launch:
 
 1. The secret VITE_OPENAI_API_KEY is named so it ships to the browser  <span class="bad">[critical]</span>
    <span class="dim">src/ai.ts:1</span>
@@ -80,12 +80,16 @@ launch-blockers · <span class="bad">BLOCKED</span>
    <span class="dim">supabase/migrations/20260101_init.sql:1</span>
    <span class="dim">Fix prompt: Write a new migration that enables it and adds policies…</span>
 
+3. Anyone on the internet can read every row of "messages"  <span class="bad">[high]</span>
+   <span class="dim">supabase/migrations/20260101_init.sql:4</span>
+   <span class="dim">Fix prompt: Replace that policy so a user can only read their own rows…</span>
+
 Not checked (CLEAR never covers these):
   <span class="dim">- Your live database: npx greenlitlab &lt;your-app-url&gt; --mine</span>
 
 <span class="p">$</span> <span class="dim"># fix, then check again</span>
 launch-blockers · <span class="ok">CLEAR</span></pre>
-    <figcaption id="run-cap" class="dim">The sample project in the repo, before and after its two fixes. Everything is read on your computer; nothing is uploaded.</figcaption>
+    <figcaption id="run-cap" class="dim">The sample project in the repo, before and after its three fixes. Everything is read on your computer; nothing is uploaded.</figcaption>
   </figure>
 </section>
 
@@ -113,7 +117,7 @@ launch-blockers · <span class="ok">CLEAR</span></pre>
 <tr><td>6</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#6-service-role-in-frontend">The Supabase service_role (secret) key in the browser</a></td><td class="sev-critical">critical</td><td>scan</td><td><a href="https://supabase.com/docs/guides/api/api-keys">Rule: Supabase docs: API keys</a></td></tr>
 <tr><td>7</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#7-env-committed">The .env file committed to git</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://cyble.com/blog/when-ai-secrets-go-public-chatgpt/">5,000+ GitHub repositories with OpenAI keys committed (2026-02)</a></td></tr>
 <tr><td>8</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#8-unauthenticated-function">A backend function anyone on the internet can call</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://supabase.com/docs/guides/functions/function-configuration">Rule: Supabase docs: function configuration (verify_jwt)</a></td></tr>
-<tr><td>9</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#9-webhook-unverified">A payment webhook that believes anyone</a></td><td class="sev-medium">medium</td><td>scan</td><td><a href="https://docs.stripe.com/webhooks#verify-events">Rule: Stripe docs: verify webhook signatures</a></td></tr>
+<tr><td>9</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#9-webhook-unverified">A payment webhook that believes anyone</a></td><td class="sev-high">high</td><td>scan</td><td><a href="https://docs.stripe.com/webhooks#verify-events">Rule: Stripe docs: verify webhook signatures</a></td></tr>
 <tr><td>10</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#10-backwards-access-check">An access check that's backwards or only in the browser</a></td><td class="sev-critical">critical</td><td>agent review</td><td><a href="https://www.theregister.com/2026/02/27/lovable_app_vulnerabilities">Lovable-showcased app with an inverted access check (2026-02)</a></td></tr>
 <tr><td>11</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#11-other-users-records">Change the number in the address, see someone else's data</a></td><td class="sev-critical">critical</td><td>agent review</td><td><a href="https://api-security.owasp.org/editions/2023/en/0xa1-broken-object-level-authorization">Rule: OWASP API Security Top 10: API1 Broken Object Level Authorization</a></td></tr>
 <tr><td>12</td><td><a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#12-open-signup-private-app">A private app that still lets anyone sign up</a></td><td class="sev-high">high</td><td>agent review</td><td><a href="https://www.wiz.io/blog/critical-vulnerability-base44">Base44: anyone could join private apps (2025-07)</a></td></tr>

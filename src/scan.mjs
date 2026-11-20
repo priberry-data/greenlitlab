@@ -127,8 +127,19 @@ const ALWAYS = (d) => /^(true|'t'|'true'|1\s*=\s*1|true::bool(ean)?|not\s+false)
 // A condition that only asks "is anyone signed in?": every signed-in user passes.
 const ANY_SIGNED_IN = (d) => /^(\(?\s*(select\s+)?auth\.uid\s*\(\s*\)\s*\)?\s+is\s+not\s+null|\(?\s*(select\s+)?auth\.role\s*\(\s*\)\s*\)?\s*=\s*'authenticated'|\(?\s*(select\s+)?auth\.jwt\s*\(\s*\)\s*\)?\s+is\s+not\s+null|auth\.uid\s*\(\s*\)\s*<>\s*null)$/.test(unwrapParens(d));
 
+function isCheckout(dotGit) {
+  try {
+    const st = fs.statSync(dotGit);
+    if (st.isFile()) return /^gitdir:\s*\S/.test(fs.readFileSync(dotGit, "utf8").slice(0, 4096));
+    return st.isDirectory() && fs.existsSync(path.join(dotGit, "HEAD")) && fs.existsSync(path.join(dotGit, "objects"));
+  } catch {
+    return false;
+  }
+}
+
 function walk(root) {
   const out = [];
+  const nested = [];
   const seen = new Set();
   const stack = [root];
   let truncated = false;
@@ -164,19 +175,23 @@ function walk(root) {
         const relDir = path.relative(root, dir).split(path.sep).join("/");
         if (TEST_DIRS.has(e.name) && !/(^|\/)(app|pages|routes)(\/|$)/.test(relDir)) continue;
         // Another checkout inside this one (a git worktree, a submodule, a cloned repo) is a different project.
-        if (fs.existsSync(path.join(full, ".git"))) continue;
+        // Only a real one: an empty .git can't hide a folder. Every skipped folder is reported.
+        if (isCheckout(path.join(full, ".git"))) {
+          nested.push(path.relative(root, full).split(path.sep).join("/"));
+          continue;
+        }
         (FIRST.has(e.name) ? first : later).push(full);
       } else if (isFile && TEXT.test(full.split(path.sep).join("/"))) {
         if (out.length >= MAX_FILES) {
           truncated = true;
-          return { files: out, truncated };
+          return { files: out, truncated, nested };
         }
         out.push(full);
       }
     }
     stack.push(...later, ...first); // the FIRST folders are popped first
   }
-  return { files: out, truncated };
+  return { files: out, truncated, nested };
 }
 
 // Whether a function's own code checks a webhook signature (Stripe, Svix/Resend/Clerk, GitHub, Lemon Squeezy, Paddle).
@@ -211,7 +226,10 @@ function clientSide(name, text, project) {
   if (/^\s*["']use client["']/m.test(text)) return true;
   // Server functions (TanStack Start, SolidStart, Remix loaders) and anything reading process.env run on a server:
   // a Vite build gives the browser import.meta.env, not process.env.
-  if (/\bcreateServerFn\b|\bcreateServerAction\b|["']server-only["']|["']@tanstack\/react-start\/server["']|\bexport\s+(?:async\s+)?function\s+(?:loader|action)\b|\bprocess\.env\.(?!NODE_ENV\b|REACT_APP_|NEXT_PUBLIC_|EXPO_PUBLIC_|VITE_|GATSBY_)[A-Z_]/.test(text)) return false;
+  if (/\bcreateServerFn\b|\bcreateServerAction\b|\bcreateMiddleware\b|["']server-only["']|["']@tanstack\/(?:react-)?start\/server["']|\bexport\s+(?:async\s+)?function\s+(?:loader|action)\b/.test(text)) return false;
+  // Outside a single-page app, a file reading a non-public process.env value runs on a server. In a Vite or
+  // Create React App build it may still be bundled for the browser, so there it proves nothing.
+  if (!project.spa && /\bprocess\.env\.(?!NODE_ENV\b|REACT_APP_|NEXT_PUBLIC_|EXPO_PUBLIC_|VITE_|GATSBY_)[A-Z_]/.test(text)) return false;
   if (/import\.meta\.env\b/.test(text)) return true;
   if (/\.(vue|svelte|html)$/.test(name)) return true;
   if (/\.astro$/.test(name)) return false; // frontmatter runs on the server
@@ -236,7 +254,7 @@ export function codeScan(dir = ".") {
   } catch {}
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const project = {
-    spa: !exists("next.config.js") && !exists("next.config.mjs") && !exists("next.config.ts") && (["vite.config.ts", "vite.config.js", "vite.config.mjs"].some(exists) || "react-scripts" in deps || "expo" in deps),
+    spa: !["@tanstack/react-start", "@tanstack/start", "@remix-run/node", "@react-router/node", "@sveltejs/kit", "nuxt", "astro", "@solidjs/start", "vinxi", "@builder.io/qwik-city"].some((d) => d in deps) && !exists("next.config.js") && !exists("next.config.mjs") && !exists("next.config.ts") && (["vite.config.ts", "vite.config.js", "vite.config.mjs"].some(exists) || "react-scripts" in deps || "expo" in deps),
     gemini: "@google/generative-ai" in deps || "@google/genai" in deps,
   };
   let usesSupabase = exists("supabase") || Object.keys(deps).some((d) => d.startsWith("@supabase/"));
@@ -347,7 +365,7 @@ export function codeScan(dir = ".") {
 
     // Payment webhooks that act on a message without checking who sent it.
     if (/\.(js|ts|mjs|tsx|py)$/.test(name)) {
-      const stripe = /from\s+["']stripe["']|require\(\s*["']stripe["']\)|import\s+stripe\b|stripe-signature|\bStripe\b/.test(code);
+      const stripe = !client && /from\s+["'](?:npm:|https?:\/\/[^"'\s]*\/)?stripe(?:@[^"'?\/\s]*)?(?:\?[^"'\s]*)?["']|require\(\s*["']stripe["']\)|^\s*import\s+stripe\b/m.test(code);
       const events = /checkout\.session\.completed|invoice\.(?:paid|payment_succeeded)|customer\.subscription\.|payment_intent\.succeeded|event\.type\s*===?|event\[["']type["']\]/.test(code);
       const named = /webhook/i.test(name);
       // A route that takes a Stripe event as JSON, whatever the file is called (but not one that creates a checkout).
@@ -417,7 +435,8 @@ export function codeScan(dir = ".") {
         continue;
       }
       // Row Level Security switched on at run time.
-      if (/\bexecute\b/i.test(o) && /enable\s+row\s+level\s+security/i.test(o)) {
+      // Only an anonymous DO block runs here; a function that does the same may never be called.
+      if (/^\s*do\b/i.test(o) && /\bexecute\b/i.test(o) && /enable\s+row\s+level\s+security/i.test(o)) {
         const arr = o.match(/foreach\s+\w+\s+in\s+array\s+(?:array\s*)?\[([^\]]*)\]/i);
         if (arr) for (const n of arr[1].matchAll(/'([\w.]+)'/g)) protectedTables.add(n[1].replace(/^public\./i, "").toLowerCase());
         else if (/pg_tables|information_schema\.tables|pg_class|pg_catalog/i.test(o)) for (const t of created.keys()) protectedTables.add(t); // a loop over every table
@@ -636,7 +655,7 @@ export function codeScan(dir = ".") {
 
   const order = ["critical", "high", "medium", "low", "info"];
   findings.sort((a, b) => order.indexOf(a.severity) - order.indexOf(b.severity));
-  return { source: "your project's files", dir: root, files: files.length, findings, truncated: walked.truncated, unread, gitUnavailable };
+  return { source: "your project's files", dir: root, files: files.length, findings, truncated: walked.truncated, unread, gitUnavailable, nested: walked.nested };
 }
 
 // ---------- Firebase rules

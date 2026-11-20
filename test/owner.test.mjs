@@ -316,7 +316,7 @@ test("scan: protection switched on in a loop is seen; test files, agents' copies
 });
 
 test("scan: when protection is switched on by a statement Greenlit can't follow, an unmatched table is a question, not an alarm", () => {
-  const dir = project({ "package.json": "{}", "supabase/migrations/1.sql": "create table public.notes (id int);\ncreate function lock(t text) returns void as $$ begin execute 'alter table public.' || t || ' enable row level security'; end $$ language plpgsql;" });
+  const dir = project({ "package.json": "{}", "supabase/migrations/1.sql": "create table public.notes (id int);\ndo $$ declare t text := current_setting('app.tables'); begin execute 'alter table public.' || t || ' enable row level security'; end $$;" });
   const f = codeScan(dir).findings;
   assert.deepEqual(f.map((x) => `${x.id}:${x.severity}`), ["scan:no-rls:notes:medium"]);
   assert.match(f[0].title, /couldn't see/);
@@ -325,6 +325,10 @@ test("scan: when protection is switched on by a statement Greenlit can't follow,
   const loop = project({ "package.json": "{}", "supabase/migrations/1.sql": "create table public.notes (id int);\ndo $$ declare r record; begin for r in select tablename from pg_tables where schemaname = 'public' loop execute format('alter table public.%I enable row level security', r.tablename); end loop; end $$;" });
   assert.deepEqual(codeScan(loop).findings, []);
   fs.rmSync(loop, { recursive: true });
+  // The same loop inside a function that is never called protects nothing.
+  const fn = project({ "package.json": "{}", "supabase/migrations/1.sql": "create table public.notes (id int);\ncreate function lock_all() returns void as $$ declare r record; begin for r in select tablename from pg_tables where schemaname = 'public' loop execute format('alter table public.%I enable row level security', r.tablename); end loop; end $$ language plpgsql;" });
+  assert.deepEqual(codeScan(fn).findings.map((x) => `${x.id}:${x.severity}`), ["scan:no-rls:notes:high"]);
+  fs.rmSync(fn, { recursive: true });
 });
 
 test("scan: a rule or table that a later migration removed is not reported", () => {
