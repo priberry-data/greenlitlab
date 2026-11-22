@@ -27,7 +27,7 @@
 <main id="main">
   <section class="intro">
     <h1>Watch a stranger read your app's data</h1>
-    <p class="lede">This is a small app like the ones Lovable, Bolt, v0 or Claude Code build: a database, file storage, a backend function, payments. Each switch below is a setting that has leaked real users' data. Set them, then let a stranger try. Nothing here touches a real app. Every name and number is made up.</p>
+    <p class="lede">This is a small app like the ones Lovable, Bolt, v0 or Claude Code build: a database, file storage, a backend function, payments. Each switch below is a setting that has leaked real users' data. Set them, then let a stranger try. Nothing here touches a real app. The app's names and numbers are made up; the real-leak replays quote the public record, with the source.</p>
   </section>
 
   <section class="presets" aria-label="Start from">
@@ -36,6 +36,14 @@
     <button type="button" data-preset="locked">everything locked down</button>
     <button type="button" data-preset="all">everything open</button>
   </section>
+  <section class="presets cases" aria-label="Replay a real leak">
+    <span class="dim">replay a real leak:</span>
+    <button type="button" data-case="moltbook" aria-pressed="false">Moltbook</button>
+    <button type="button" data-case="crissy" aria-pressed="false">159,041 Lovable projects</button>
+    <button type="button" data-case="tea" aria-pressed="false">Tea's ID photos</button>
+    <button type="button" data-case="supersecret" aria-pressed="false">"supersecretkey"</button>
+  </section>
+  <section class="panel case" id="case" hidden aria-live="polite"></section>
 
   <div class="grid">
     <section class="panel settings" aria-labelledby="settings-t">

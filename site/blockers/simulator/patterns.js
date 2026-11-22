@@ -7,6 +7,32 @@ window.PATTERNS = {
   "why": "Supabase apps ship a public key in the browser on purpose. Row Level Security is the only thing that stops that key reading every row. Without it, anyone can read (and often change) the whole table.",
   "fix": "Go through every table in my Supabase database. For each one that doesn't have Row Level Security enabled, write a new migration that enables it and adds policies so a signed-in user reaches only their own rows (auth.uid() = the owner column; add one if needed). If a table is meant to be public, say which and make it read-only. Don't edit old migrations. Show me the SQL before running anything.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#1-no-rls",
+  "incidents": [
+   {
+    "date": "2025-05-29",
+    "title": "CVE-2025-48757: Lovable apps without working RLS",
+    "what": "Researchers found 170 of 1,645 apps listed on Lovable Launched with 303 exposed endpoints because Row Level Security was missing or misconfigured. NVD scores it 9.3 (critical); Lovable disputes it, saying each customer secures their own data.",
+    "name": "Matt Palmer",
+    "url": "https://mattpalmer.io/posts/statement-on-CVE-2025-48757/",
+    "note": null
+   },
+   {
+    "date": "2026-02-02",
+    "title": "Moltbook database left open",
+    "what": "Wiz found the vibe-coded AI-agent network's Supabase database had no Row Level Security, giving read and write access to 1.5 million API tokens, 35,000 email addresses and 4,060 private conversations. It was fixed within hours.",
+    "name": "Wiz Research",
+    "url": "https://www.wiz.io/blog/exposed-moltbook-database-reveals-millions-of-api-keys",
+    "note": "The key Wiz found was the public Supabase key, which is meant to be public. The failure was the missing RLS."
+   },
+   {
+    "date": "2026-11-04",
+    "title": "Crissy Field scan of 159,041 Lovable projects",
+    "what": "Of 34,545 projects using Supabase, 24,664 returned database records on load with no login, and 7,403 of those had records containing email addresses.",
+    "name": "Techzine",
+    "url": "https://www.techzine.eu/news/security/145550/thousands-of-lovable-apps-are-leaking-personal-data/",
+    "note": "The researchers say 30% is not a confirmed breach rate: some emails may be public contacts or test data."
+   }
+  ],
   "source": {
    "date": "2025-05-29",
    "title": "CVE-2025-48757: Lovable apps without working RLS",
@@ -22,6 +48,16 @@ window.PATTERNS = {
   "why": "RLS looks enabled in the dashboard, so everyone relaxes, but a condition of true lets everyone through. Fine for a product list, a leak for anything about people.",
   "fix": "Find every Row Level Security policy in my database whose condition is simply true. For each, tell me whether the table holds anything about a specific person (names, emails, messages, payments, activity). Change nothing yet. Then propose a rewrite that limits it to the row's owner (auth.uid() = the owner column), as a new migration, and wait for my OK.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#2-open-policy",
+  "incidents": [
+   {
+    "date": "2025-05-29",
+    "title": "CVE-2025-48757: Lovable apps without working RLS",
+    "what": "The researchers counted apps where Row Level Security was missing or misconfigured.",
+    "name": "Matt Palmer",
+    "url": "https://mattpalmer.io/posts/statement-on-CVE-2025-48757/",
+    "note": null
+   }
+  ],
   "source": {
    "date": "2025-05-29",
    "title": "CVE-2025-48757: Lovable apps without working RLS",
@@ -37,6 +73,32 @@ window.PATTERNS = {
   "why": "Firebase's config is public by design. The rules are the only lock. Test mode is meant for the first 30 days and is often forgotten.",
   "fix": "Rewrite my Firebase security rules so no rule uses if true or the test-mode date check. A signed-in user should reach only their own documents (request.auth != null && request.auth.uid == the owner field or path segment). Keep anything truly public read-only and tell me which it is. Show me the new rules and how to test them in the Firebase emulator before deploying.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#3-firebase-open-rules",
+  "incidents": [
+   {
+    "date": "2026-01-29",
+    "title": "AI chat app exposes chat histories",
+    "what": "A researcher said a Firebase misconfiguration in the Chat & Ask AI app exposed about 300 million messages from more than 25 million users. 404 Media reports Firebase made it easy to become an 'authenticated' user. It was fixed within hours.",
+    "name": "404 Media",
+    "url": "https://www.404media.co/massive-ai-chat-app-leaked-millions-of-users-private-conversations/",
+    "note": "The counts are the researcher's claims, and neither report gives the exact rule. The app is an AI chatbot; it isn't known to be AI-built."
+   },
+   {
+    "date": "2026-02-09",
+    "title": "Same Firebase mistake in 103 of 200 iOS apps",
+    "what": "The same researcher scanned 200 iOS apps and found 103 with the same Firebase misconfiguration.",
+    "name": "Malwarebytes",
+    "url": "https://www.malwarebytes.com/blog/news/2026/02/ai-chat-app-leak-exposes-300-million-messages-tied-to-25-million-users",
+    "note": null
+   },
+   {
+    "date": "2026-02-01",
+    "title": "285 open Firebase databases in Android AI apps",
+    "what": "Cybernews researchers found 285 Firebase databases with no authentication among 38,630 Android apps with AI features.",
+    "name": "TechRadar (reporting Cybernews)",
+    "url": "https://www.techradar.com/pro/shock-report-claims-android-apps-have-leaked-over-730tb-of-user-data-and-google-secrets-here-are-some-of-the-worst-offenders-around",
+    "note": null
+   }
+  ],
   "source": {
    "date": "2026-01-29",
    "title": "AI chat app exposes chat histories",
@@ -52,6 +114,16 @@ window.PATTERNS = {
   "why": "Uploads are where the most sensitive things end up: selfies, IDs, contracts. A public bucket hands them to anyone who finds the address.",
   "fix": "List every storage bucket in my project and whether it's public. For any bucket holding user uploads, make it private, serve files through signed URLs that expire, and add storage policies so a user reaches only their own files. Tell me which buckets you'd keep public (logos, product images) and why. Show me the changes.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#4-public-storage",
+  "incidents": [
+   {
+    "date": "2025-07-25",
+    "title": "Tea app: verification selfies and IDs exposed",
+    "what": "An exposed Firebase storage bucket with no authentication held users' verification selfies and driver's licences. Tea estimated 72,000 images were accessed, 13,000 of them verification photos and ID images.",
+    "name": "404 Media (figures via NBC News)",
+    "url": "https://www.404media.co/women-dating-safety-app-tea-breached-users-ids-posted-to-4chan/",
+    "note": "There's no public evidence Tea was AI-built. It's here because the mistake is the same one."
+   }
+  ],
   "source": {
    "date": "2025-07-25",
    "title": "Tea app: verification selfies and IDs exposed",
@@ -67,6 +139,40 @@ window.PATTERNS = {
   "why": "Everything the browser runs, every visitor can read. A key there can be copied and used on your bill.",
   "fix": "Find every API key or secret my frontend code uses (anything with a VITE_, NEXT_PUBLIC_, REACT_APP_ or EXPO_PUBLIC_ prefix, and anything pasted directly into code). Move each call that needs a secret into a backend function (a Supabase Edge Function or a server route) that checks the user is signed in, read the key there from a secret, and confirm the key no longer appears in the built frontend. List the keys I must revoke and replace, because they've already been public.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#5-secret-in-frontend",
+  "incidents": [
+   {
+    "date": "2026-02-12",
+    "title": "About 3,000 websites exposing ChatGPT keys",
+    "what": "Cyble found about 3,000 public websites exposing ChatGPT API keys in client-side JavaScript.",
+    "name": "Cyble",
+    "url": "https://cyble.com/blog/when-ai-secrets-go-public-chatgpt/",
+    "note": "Cyble documents no measured bills for these keys."
+   },
+   {
+    "date": "2025-10-29",
+    "title": "Escape.tech scan of 5,600+ vibe-coded apps",
+    "what": "Escape found more than 400 exposed secrets, over 2,000 vulnerabilities and 175 instances of exposed personal data across apps built on vibe-coding platforms.",
+    "name": "Escape.tech",
+    "url": "https://escape.tech/blog/methodology-how-we-discovered-vulnerabilities-apps-built-with-vibe-coding/",
+    "note": "A vendor study by a company that sells scanning; it calls its numbers lower bounds."
+   },
+   {
+    "date": "2026-02-01",
+    "title": "Hardcoded secrets in Android AI apps",
+    "what": "Cybernews found nearly three-quarters of 38,630 Android apps with AI features had at least one hardcoded secret, 197,092 in all.",
+    "name": "TechRadar (reporting Cybernews)",
+    "url": "https://www.techradar.com/pro/shock-report-claims-android-apps-have-leaked-over-730tb-of-user-data-and-google-secrets-here-are-some-of-the-worst-offenders-around",
+    "note": "Over 81% were Google Cloud identifiers, many low-risk."
+   },
+   {
+    "date": "2026-02-25",
+    "title": "Google API keys quietly became Gemini keys",
+    "what": "Truffle Security showed that switching on the Generative Language API in a Google Cloud project lets that project's existing API keys, including Maps and Firebase keys already published in websites' JavaScript, call Gemini with no warning. It found 2,863 live keys that worked on Gemini in one Common Crawl snapshot.",
+    "name": "Truffle Security",
+    "url": "https://trufflesecurity.com/blog/google-api-keys-werent-secrets-but-then-gemini-changed-the-rules",
+    "note": "The 2,863 keys are from across the web, not only AI-built apps. RedHunt Labs separately reported over 300 working Gemini keys on sites from vibe-coding platforms."
+   }
+  ],
   "source": {
    "date": "2026-02-12",
    "title": "About 3,000 websites exposing ChatGPT keys",
@@ -82,6 +188,7 @@ window.PATTERNS = {
   "why": "The service_role key skips every Row Level Security rule. In the browser, it's the master key to the whole database.",
   "fix": "Check whether my Supabase service_role or secret key is used anywhere in frontend code or has a public prefix. If so, remove it from the frontend, use the publishable (anon) key there instead, and move anything that truly needs admin rights into an Edge Function that checks who's calling. Then tell me to rotate the key in the Supabase dashboard, because it's been public.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#6-service-role-in-frontend",
+  "incidents": [],
   "source": {
    "date": null,
    "title": "Supabase docs: API keys",
@@ -97,6 +204,16 @@ window.PATTERNS = {
   "why": "Everyone with the repository has the keys, now and forever: deleting the file later doesn't remove it from history. If the repo is public, the world has them.",
   "fix": "Check whether any .env file or hardcoded key is tracked by git. If so, remove it from version control without deleting my local copy (git rm --cached), add it to .gitignore, create an .env.example with names only, and list every key that was exposed so I can revoke and replace each one.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#7-env-committed",
+  "incidents": [
+   {
+    "date": "2026-02-12",
+    "title": "5,000+ GitHub repositories with OpenAI keys committed",
+    "what": "Cyble reported over 5,000 public GitHub repositories with hardcoded OpenAI keys.",
+    "name": "Cyble",
+    "url": "https://cyble.com/blog/when-ai-secrets-go-public-chatgpt/",
+    "note": "These were keys hardcoded in committed code, not necessarily .env files; the exposure is the same."
+   }
+  ],
   "source": {
    "date": "2026-02-12",
    "title": "5,000+ GitHub repositories with OpenAI keys committed",
@@ -112,6 +229,7 @@ window.PATTERNS = {
   "why": "The AI often turns off the sign-in check to fix a 401 error. Then anyone can run the function: send emails, spend your AI credits, read data.",
   "fix": "List every backend function and API route in my project and whether it checks who's calling. For each one that doesn't: if it's a webhook, make it verify the sender's signature; otherwise require a signed-in user and check what they're allowed to do. Remove verify_jwt = false unless it's a signed webhook. Show me what you changed.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#8-unauthenticated-function",
+  "incidents": [],
   "source": {
    "date": null,
    "title": "Supabase docs: function configuration (verify_jwt)",
@@ -127,6 +245,7 @@ window.PATTERNS = {
   "why": "Without the signature check, anyone can send a fake \"payment succeeded\" message and get the paid plan for free.",
   "fix": "My payment webhook must verify the signature before doing anything. Change it to read the raw request body and call stripe.webhooks.constructEvent (constructEventAsync on edge runtimes) with the signing secret from a server secret, reject anything that fails with a 400, and only then act on the event. Show me the change.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#9-webhook-unverified",
+  "incidents": [],
   "source": {
    "date": null,
    "title": "Stripe docs: verify webhook signatures",
@@ -142,6 +261,16 @@ window.PATTERNS = {
   "why": "The app looks right when you click through it, so nobody notices. Hiding a button isn't protection: the data behind it is still one request away.",
   "fix": "Trace every place my app returns or changes data (database queries, RPC functions, API routes). For each, tell me where the access check happens, whether it runs on the server rather than only in the browser, and whether it's the right way round (signed-out users blocked, owners allowed). Write me a short test for each, as an anonymous user and as a second user, that proves they can't get someone else's data. Change nothing until I confirm.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#10-backwards-access-check",
+  "incidents": [
+   {
+    "date": "2026-02-27",
+    "title": "Lovable-showcased app with an inverted access check",
+    "what": "A researcher said an app featured on Lovable's Discover page had a database access check that blocked logged-in users and allowed anonymous ones, exposing 18,697 user records.",
+    "name": "The Register",
+    "url": "https://www.theregister.com/2026/02/27/lovable_app_vulnerabilities",
+    "note": "Counts are the researcher's. Lovable says the project included non-Lovable code and the database wasn't Lovable-hosted."
+   }
+  ],
   "source": {
    "date": "2026-02-27",
    "title": "Lovable-showcased app with an inverted access check",
@@ -157,6 +286,7 @@ window.PATTERNS = {
   "why": "The most common API flaw there is. The app only ever shows you your own records, so it works in testing.",
   "fix": "Find every API route, server action or database query that takes a record id from the request. For each, check that it also confirms the record belongs to the signed-in user (or that they're allowed to see it). Fix any that don't, and add a test where a second user asks for the first user's record and gets nothing. Show me the list first.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#11-other-users-records",
+  "incidents": [],
   "source": {
    "date": null,
    "title": "OWASP API Security Top 10: API1 Broken Object Level Authorization",
@@ -172,6 +302,16 @@ window.PATTERNS = {
   "why": "\"Behind a login\" means nothing if anyone can create a login. That's all an attacker needs to see what members see.",
   "fix": "Tell me whether my app is meant to let anyone sign up. If not, switch off public sign-up in the auth provider settings (not just by hiding the page), allow only invited emails or my company's domain, and make sure new accounts get no data access until approved. Tell me exactly which setting to change in the dashboard.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#12-open-signup-private-app",
+  "incidents": [
+   {
+    "date": "2025-07-29",
+    "title": "Base44: anyone could join private apps",
+    "what": "Wiz found Base44's register and verify-OTP endpoints needed no authentication, so anyone with a private app's public id could create a verified account. Wix fixed it in under 24 hours.",
+    "name": "Wiz Research",
+    "url": "https://www.wiz.io/blog/critical-vulnerability-base44",
+    "note": "A flaw in the platform, not in builders' apps. Wix reported no evidence of exploitation."
+   }
+  ],
   "source": {
    "date": "2025-07-29",
    "title": "Base44: anyone could join private apps",
@@ -187,6 +327,16 @@ window.PATTERNS = {
   "why": "Builders publish to a public URL by default. A tool meant for five colleagues is then one search away for everyone.",
   "fix": "This app is meant only for my team. Make every page and every data request require a signed-in user from an allowed list before anything loads, check that the published address shows nothing to a signed-out visitor, and tell me which visibility setting to change in my builder so it isn't public.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#13-internal-tool-public",
+  "incidents": [
+   {
+    "date": "2026-05-07",
+    "title": "RedAccess: thousands of public vibe-coded apps with company data",
+    "what": "RedAccess said it found about 380,000 publicly accessible assets built with vibe-coding tools, about 5,000 of them holding sensitive corporate information; Axios verified several, including a bank's internal financial data and hospital patient summaries.",
+    "name": "Security Boulevard",
+    "url": "https://securityboulevard.com/2026/05/thousands-of-vibe-coded-apps-exposing-corporate-personal-data-redaccess/",
+    "note": "Replit's CEO disputed the framing; Lovable and Base44 said the reports lacked URLs to verify."
+   }
+  ],
   "source": {
    "date": "2026-05-07",
    "title": "RedAccess: thousands of public vibe-coded apps with company data",
@@ -202,6 +352,24 @@ window.PATTERNS = {
   "why": "Agents make confident mistakes. One with write access to production can delete it in a single step.",
   "fix": "Look at my coding-agent configuration (.mcp.json, .cursor/mcp.json and similar). For any database connection, tell me whether it can write and whether it points at the live project. Change it to read-only and to a development project, and tell me how to keep a tested backup of production. Change nothing until I confirm.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#14-agent-can-write-production",
+  "incidents": [
+   {
+    "date": "2025-07",
+    "title": "Replit agent deletes a production database",
+    "what": "During a declared code freeze, Replit's AI agent deleted a live production database holding data on more than 1,200 executives and 1,190 companies. The data was recovered.",
+    "name": "Fortune",
+    "url": "https://fortune.com/2025/07/23/ai-coding-tool-replit-wiped-database-called-it-a-catastrophic-failure/",
+    "note": "Fortune published this on 23 Jul 2025; it gives no exact incident date."
+   },
+   {
+    "date": "2025-07-08",
+    "title": "A support ticket makes an agent leak private tables through the Supabase MCP server",
+    "what": "General Analysis showed Cursor connected to the Supabase MCP server with the service_role key: an attacker's support ticket held instructions, and when the developer asked the agent to show the latest ticket, it read a private table of integration tokens and wrote them back into the ticket for the attacker to read.",
+    "name": "General Analysis",
+    "url": "https://www.generalanalysis.com/blog/supabase-mcp-blog",
+    "note": "A demonstration, not a reported breach. Supabase has since added read-only and project-scoped modes."
+   }
+  ],
   "source": {
    "date": "2025-07",
    "title": "Replit agent deletes a production database",
@@ -217,6 +385,16 @@ window.PATTERNS = {
   "why": "Every file-based check, including this one, reads your files. Your users' data lives in the live database.",
   "fix": "Compare my live database's security settings with my migrations: for every table, tell me whether Row Level Security is on and which policies exist in the live project, and list anything that differs from the files. Then write migrations that make the files match the safe version. Change nothing in the live database yourself.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#15-live-db-differs",
+  "incidents": [
+   {
+    "date": "2026-11-04",
+    "title": "Crissy Field scan of 159,041 Lovable projects",
+    "what": "24,664 projects returned database records on page load to a visitor with no login, which is what the live database does, whatever the code says.",
+    "name": "Techzine",
+    "url": "https://www.techzine.eu/news/security/145550/thousands-of-lovable-apps-are-leaking-personal-data/",
+    "note": null
+   }
+  ],
   "source": {
    "date": "2026-11-04",
    "title": "Crissy Field scan of 159,041 Lovable projects",
@@ -232,6 +410,16 @@ window.PATTERNS = {
   "why": "Whoever knows the secret that signs login tokens can make a valid token for any user, including an admin. A value in the code is known to everyone who has ever seen the code, and AI models reuse the same few values.",
   "fix": "Find every secret that signs logins, sessions or cookies in my project (JWT_SECRET, SESSION_SECRET, SECRET_KEY, NEXTAUTH_SECRET and similar). Don't show me the values. Make each one come only from an environment variable, make the app refuse to start if it is missing (no fallback value), and tell me how to generate a long random one. Then remind me that changing it signs everyone out.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#16-hardcoded-auth-secret",
+  "incidents": [
+   {
+    "date": "2025-11-05",
+    "title": "Invicti: the same secrets across 20,656 AI-generated apps",
+    "what": "Invicti generated 20,656 web apps with leading AI models and found the string supersecretkey in 1,182 of them. In one, JWT_SECRET was set to supersecretjwt; with it, a researcher changed a token's role from customer to admin and reached the admin functions.",
+    "name": "Invicti",
+    "url": "https://www.invicti.com/blog/security-labs/security-issues-in-vibe-coded-web-apps-analyzed",
+    "note": "Apps generated for the study, not live apps. It also found seeded logins such as admin@example.com with the password password."
+   }
+  ],
   "source": {
    "date": "2025-11-05",
    "title": "Invicti: the same secrets across 20,656 AI-generated apps",
@@ -247,6 +435,7 @@ window.PATTERNS = {
   "why": "Supabase's user_metadata is written by the user (supabase.auth.updateUser). A rule that checks it for a role can be passed by anyone who sets that role on their own account.",
   "fix": "Find every Row Level Security policy in my database that reads user_metadata or raw_user_meta_data. Rewrite each one, as a new migration, to use app_metadata (which only the server can set) or a roles table that users can't write. Show me the SQL and how roles get assigned.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#17-rls-user-metadata",
+  "incidents": [],
   "source": {
    "date": null,
    "title": "Supabase Security Advisor: lint 0015, RLS references user metadata",
@@ -262,6 +451,7 @@ window.PATTERNS = {
   "why": "Views run with their creator's rights unless told otherwise, and a SECURITY DEFINER function runs with its owner's. Both skip the rules on the tables they read. In the public schema, the app's public key can reach them. Agents often add one to make a permissions error go away.",
   "fix": "List every view and SECURITY DEFINER function in my database's public schema. For each view, write a migration that sets security_invoker = on (or moves it out of public if it reads auth.users). For each function, revoke execute from public and anon unless it must be called without signing in, set search_path = '', and make it check auth.uid() itself. Remove any function that runs SQL passed in by the caller. Show me the SQL.",
   "anchor": "https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md#18-definer-skips-rls",
+  "incidents": [],
   "source": {
    "date": null,
    "title": "Supabase Security Advisor: lint 0010, security definer view",

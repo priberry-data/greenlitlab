@@ -41,6 +41,17 @@ button.primary{background:var(--hi);color:var(--bg);border-color:var(--hi);font-
 button.primary:hover{background:var(--fg);border-color:var(--fg);color:var(--bg)}
 button:disabled{opacity:.5;cursor:wait}
 .presets{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:22px 0 18px}
+.presets.cases{margin-top:-8px}
+.cases button[aria-pressed="true"]{border-color:var(--bad);color:var(--bad)}
+.case{margin:0 0 18px;border-color:var(--line-hi)}
+.case p{margin:4px 0;max-width:90ch}
+.case .headline{font-size:clamp(17px,2.2vw,22px);font-weight:600;color:var(--bad);text-shadow:var(--glow);line-height:1.35;margin:8px 0}
+.ledger{margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.ledger p{margin:0 0 6px;font-weight:600}
+.ledger ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.ledger li.broken span[aria-hidden]{color:var(--bad)}
+.ledger li.kept{color:var(--dim)}
+.ledger li.kept span[aria-hidden]{color:var(--ok)}
 
 .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:18px;align-items:start}
 @media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}

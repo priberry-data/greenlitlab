@@ -9,7 +9,7 @@
   // open: the steps when the setting is left open. held: the one step when it's locked down.
   const S = [
     {
-      id: "no-rls", node: "db", what: "profiles table: Row Level Security", on: "on", off: "off",
+      id: "no-rls", promise: "A stranger can never read the list of your users.", node: "db", what: "profiles table: Row Level Security", on: "on", off: "off",
       hint: "Off: the app's public key can read every row.",
       open: [
         ["browser", "opens the app and copies the database address and public key from its JavaScript (they're meant to be public)"],
@@ -20,7 +20,7 @@
       held: ["db", "asks for every row of profiles: 0 rows. Row Level Security only shows a user their own row."],
     },
     {
-      id: "open-policy", node: "db", what: "messages table: who can read", on: "the owner", off: "everyone (true)",
+      id: "open-policy", promise: "Private messages are seen only by the people in the conversation.", node: "db", what: "messages table: who can read", on: "the owner", off: "everyone (true)",
       hint: 'A rule whose condition is just "true" checks nothing.',
       open: [
         ["db", "asks for every row of messages. Row Level Security is on, but the rule says using (true)"],
@@ -29,7 +29,7 @@
       held: ["db", "asks for every row of messages: the rule compares auth.uid() with the sender, so 0 rows."],
     },
     {
-      id: "firebase-open-rules", node: "firebase", what: "Firestore rules", on: "signed-in owner", off: "if true",
+      id: "firebase-open-rules", promise: "Chats are readable only by the person who had them.", node: "firebase", what: "Firestore rules", on: "signed-in owner", off: "if true",
       hint: "Test-mode rules let anyone read and write.",
       open: [
         ["browser", "copies the Firebase config from the page (meant to be public)"],
@@ -39,7 +39,7 @@
       held: ["firebase", "lists chats: permission denied. Rules only let a signed-in user read their own chats."],
     },
     {
-      id: "public-storage", node: "storage", what: "id-photos bucket", on: "private", off: "public",
+      id: "public-storage", promise: "ID photos are seen only by the person who uploaded them.", node: "storage", what: "id-photos bucket", on: "private", off: "public",
       hint: "Public: anyone with a file's address can download it.",
       open: [
         ["storage", "guesses the bucket address from an avatar link: .../storage/v1/object/public/id-photos/"],
@@ -48,7 +48,7 @@
       held: ["storage", "tries .../public/id-photos/: not found. The bucket is private; owners get short-lived signed links."],
     },
     {
-      id: "secret-in-frontend", node: "browser", what: "OpenAI key name", on: "OPENAI_API_KEY (server)", off: "VITE_OPENAI_API_KEY",
+      id: "secret-in-frontend", promise: "Your OpenAI key never leaves your server.", node: "browser", what: "OpenAI key name", on: "OPENAI_API_KEY (server)", off: "VITE_OPENAI_API_KEY",
       hint: "A VITE_ or NEXT_PUBLIC_ name is copied into the browser code.",
       open: [
         ["browser", "searches the JavaScript bundle for sk-proj- and finds the OpenAI key"],
@@ -57,7 +57,7 @@
       held: ["browser", "searches the JavaScript bundle for keys: only the public database key is there."],
     },
     {
-      id: "service-role-in-frontend", node: "browser", what: "Supabase key in the browser", on: "anon (public) key", off: "service_role key",
+      id: "service-role-in-frontend", promise: "No visitor ever holds the key that skips every database rule.", node: "browser", what: "Supabase key in the browser", on: "anon (public) key", off: "service_role key",
       hint: "service_role skips every Row Level Security rule.",
       open: [
         ["browser", "finds a key in the bundle whose role is service_role"],
@@ -67,7 +67,7 @@
       held: ["browser", "finds only the anon key, which Row Level Security still limits."],
     },
     {
-      id: "env-committed", node: "repo", what: ".env file", on: "in .gitignore", off: "committed to git",
+      id: "env-committed", promise: "Your secret keys are never in your published code.", node: "repo", what: ".env file", on: "in .gitignore", off: "committed to git",
       hint: "Committed keys stay in the history forever.",
       open: [
         ["repo", "finds the public repository and reads .env from the history"],
@@ -76,7 +76,7 @@
       held: ["repo", "reads the repository: .env was never committed, only .env.example with names."],
     },
     {
-      id: "unauthenticated-function", node: "fn", what: "ai-chat function: sign-in check", on: "on", off: "verify_jwt = false",
+      id: "unauthenticated-function", promise: "Only signed-in users can spend your AI credits.", node: "fn", what: "ai-chat function: sign-in check", on: "on", off: "verify_jwt = false",
       hint: "Off: anyone on the internet can call it.",
       open: [
         ["fn", "calls ai-chat with no login, from a loop: 40,000 requests"],
@@ -85,7 +85,7 @@
       held: ["fn", "calls ai-chat with no login: 401. The function only answers signed-in users."],
     },
     {
-      id: "webhook-unverified", node: "webhook", what: "payment webhook", on: "checks Stripe's signature", off: "believes any request",
+      id: "webhook-unverified", promise: "A paid plan is given only when Stripe says someone paid.", node: "webhook", what: "payment webhook", on: "checks Stripe's signature", off: "believes any request",
       hint: 'Anyone can send "payment succeeded".',
       open: [
         ["webhook", 'sends a hand-written "checkout.session.completed" for their own account'],
@@ -94,7 +94,7 @@
       held: ["webhook", "sends a fake payment message: 400. It has no valid Stripe-Signature header."],
     },
     {
-      id: "hardcoded-auth-secret", node: "auth", what: "login signing secret", on: "random, in an env variable", off: '"supersecretkey" in code',
+      id: "hardcoded-auth-secret", promise: "Nobody can sign in as someone else, admin included.", node: "auth", what: "login signing secret", on: "random, in an env variable", off: '"supersecretkey" in code',
       hint: "Whoever knows it can make a login for any user.",
       open: [
         ["repo", 'finds JWT_SECRET = "supersecretkey" in the code (a string Invicti found in 1,182 AI-generated apps)'],
@@ -104,7 +104,7 @@
       held: ["auth", "tries the usual secrets (supersecretkey, secret, changeme): every token is rejected."],
     },
     {
-      id: "rls-user-metadata", node: "db", what: "admin_notes rule checks", on: "app_metadata (server only)", off: "user_metadata",
+      id: "rls-user-metadata", promise: "Users can't make themselves admin.", node: "db", what: "admin_notes rule checks", on: "app_metadata (server only)", off: "user_metadata",
       hint: "Users can change their own user_metadata.",
       open: [
         ["auth", "signs up, then calls updateUser({ data: { role: 'admin' } }) on their own account"],
@@ -114,7 +114,7 @@
       held: ["db", "sets role: admin in their own user_metadata: no effect, the rule checks app_metadata, which only the server sets."],
     },
     {
-      id: "definer-skips-rls", node: "db", what: "leaderboard view", on: "security_invoker = on", off: "default (creator's rights)",
+      id: "definer-skips-rls", promise: "Emails stay private everywhere, the leaderboard included.", node: "db", what: "leaderboard view", on: "security_invoker = on", off: "default (creator's rights)",
       hint: "A view runs with its creator's rights unless told otherwise.",
       open: [
         ["db", "notices a leaderboard view in the API next to the protected profiles table"],
@@ -129,6 +129,23 @@
     locked: [],
     all: S.map((s) => s.id),
   };
+  // Real leaks, replayed. The pretend app gets the same setting; the headline is the public record, and `match`
+  // picks the incident in data/patterns.json, so the date, source and link always come from there.
+  const CASES = {
+    moltbook: { label: "Moltbook: Row Level Security never switched on", pattern: "no-rls", match: "Moltbook", open: ["no-rls"],
+      headline: "1.5 million API tokens and 35,000 email addresses, readable and writable by anyone" },
+    crissy: { label: "the scan of 159,041 Lovable projects", pattern: "no-rls", match: "Crissy Field", open: ["no-rls", "open-policy"],
+      headline: "24,664 of 34,545 projects using Supabase handed records to a visitor with no login" },
+    tea: { label: "Tea: the ID-photo bucket left open", pattern: "public-storage", match: "Tea app", open: ["public-storage"],
+      headline: "72,000 images accessed, 13,000 of them verification selfies and IDs" },
+    supersecret: { label: '"supersecretkey": the login secret everyone shares', pattern: "hardcoded-auth-secret", match: "Invicti", open: ["hardcoded-auth-secret"],
+      headline: 'the string "supersecretkey" in 1,182 of 20,656 AI-generated apps' },
+  };
+  const incidentOf = (c) => (P[c.pattern]?.incidents || []).find((i) => i.title.includes(c.match));
+  // Bump V whenever a scenario's story changes, so an old link says it may play differently now.
+  const V = 1;
+  let currentCase = null;
+  let staleLink = false;
 
   const $ = (q, el = document) => el.querySelector(q);
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -140,14 +157,31 @@
   function readHash() {
     const m = location.hash.match(/open=([\w,-]*)/);
     const p = location.hash.match(/(?:^#|&)p=([\w-]+)/);
+    const c = location.hash.match(/(?:^#|&)case=([\w-]+)/);
+    const v = location.hash.match(/(?:^#|&)v=(\d+)/);
+    staleLink = !!(v && Number(v[1]) !== V);
     open.clear();
-    if (p && byId[p[1]]) open.add(p[1]);
+    currentCase = c && CASES[c[1]] ? c[1] : null;
+    if (currentCase) CASES[currentCase].open.forEach((id) => open.add(id));
+    else if (p && byId[p[1]]) open.add(p[1]);
     else if (m) m[1].split(",").filter((id) => byId[id]).forEach((id) => open.add(id));
     else PRESETS.typical.forEach((id) => open.add(id));
   }
   function writeHash() {
-    const h = `#open=${S.filter((s) => open.has(s.id)).map((s) => s.id).join(",")}`;
+    const h = currentCase ? `#v=${V}&case=${currentCase}` : `#v=${V}&open=${S.filter((s) => open.has(s.id)).map((s) => s.id).join(",")}`;
     history.replaceState(null, "", h);
+  }
+  function renderCase() {
+    const el = $("#case");
+    document.querySelectorAll("[data-case]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.case === currentCase)));
+    const stale = staleLink ? `<p class="warn small">This link was made with an earlier version of the simulator, so the story may play a little differently now.</p>` : "";
+    if (!currentCase) { el.innerHTML = stale; el.hidden = !stale; return; }
+    const c = CASES[currentCase], inc = incidentOf(c);
+    el.innerHTML = `<p><span class="dim">replaying:</span> <b>${esc(c.label)}</b></p>
+      <p class="headline">${esc(c.headline)}</p>
+      ${inc ? `<p class="small">On the record: <b>${esc(inc.date)}</b> · <a href="${esc(inc.url)}" rel="noopener">${esc(inc.title)}</a> (${esc(inc.name)}). ${esc(inc.what)}${inc.note ? ` <span class="dim">${esc(inc.note)}</span>` : ""}</p>` : ""}
+      <p class="dim small">Below is the pretend app with the same setting left open. Its names and numbers are made up; the headline above is not.</p>${stale}`;
+    el.hidden = false;
   }
 
   // ---- switches
@@ -167,7 +201,10 @@
     if (!b || running) return;
     const id = b.closest(".sw").dataset.id;
     open.has(id) ? open.delete(id) : open.add(id);
+    currentCase = null;
+    staleLink = false;
     writeHash();
+    renderCase();
     renderSwitches();
     $(`.sw[data-id="${id}"] .tog`).focus();
   });
@@ -175,10 +212,27 @@
     b.addEventListener("click", () => {
       if (running) return;
       open.clear();
+      currentCase = null;
+      staleLink = false;
       PRESETS[b.dataset.preset].forEach((id) => open.add(id));
       writeHash();
+      renderCase();
       renderSwitches();
       resetStage();
+    }),
+  );
+  document.querySelectorAll("[data-case]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (running) return;
+      currentCase = b.dataset.case;
+      staleLink = false;
+      open.clear();
+      CASES[currentCase].open.forEach((id) => open.add(id));
+      writeHash();
+      renderCase();
+      renderSwitches();
+      resetStage();
+      $("#case").scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
     }),
   );
 
@@ -263,14 +317,37 @@
   $("#run").addEventListener("click", run);
 
   // ---- report: what leaked, the dated incident behind it, and the prompt that fixes it
+  function ledger(ids) {
+    const broken = S.filter((s) => ids.includes(s.id)), kept = S.filter((s) => !ids.includes(s.id));
+    return `<div class="ledger"><p><span class="${broken.length ? "bad" : "ok"}">${kept.length} of ${S.length} promises kept${broken.length ? `, ${broken.length} broken` : ""}</span></p><ul>` +
+      broken.map((s) => `<li class="broken"><span aria-hidden="true">✗</span> ${esc(s.promise)} <span class="dim small">broken</span></li>`).join("") +
+      kept.map((s) => `<li class="kept"><span aria-hidden="true">✓</span> ${esc(s.promise)} <span class="dim small">kept</span></li>`).join("") +
+      `</ul></div>`;
+  }
+  function agentPrompt(ids) {
+    writeHash();
+    const broken = S.filter((s) => ids.includes(s.id));
+    return [
+      "A leak simulator showed that an app set up like mine breaks these promises:",
+      ...broken.map((s) => `- ${s.promise} (${P[s.id]?.title})`),
+      `Scenario: ${location.href}`,
+      "",
+      "Check whether my project has each of these problems. Where it does, fix it as described below. Show me every change and any SQL before you run it, and don't touch live data without asking me.",
+      "",
+      ...broken.map((s) => `${P[s.id]?.title}:\n${P[s.id]?.fix}`),
+      "",
+      "When you're done, run `npx launch-blockers check` in the project and show me the result.",
+    ].join("\n");
+  }
   function renderReport(ids) {
     const body = $("#report-body");
     if (!ids.length) {
-      body.innerHTML = `<p class="allclear">Nothing leaked in this setup. Now check that your real app matches it: <code>npx launch-blockers check</code>.</p>`;
+      body.innerHTML = ledger(ids) + `<p class="allclear">Nothing leaked in this setup. Now check that your real app matches it: <code>npx launch-blockers check</code>.</p>`;
     } else {
       const all = ids.map((id) => P[id]?.fix).filter(Boolean).join("\n\n");
       body.innerHTML =
-        `<div class="report-head"><span>${ids.length} leak${ids.length > 1 ? "s" : ""}, each one on the public record:</span><button type="button" data-copytext="${esc(all)}">copy all ${ids.length} fix prompt${ids.length > 1 ? "s" : ""}</button></div>` +
+        ledger(ids) +
+        `<div class="report-head"><span>${ids.length} leak${ids.length > 1 ? "s" : ""}, each one on the public record:</span><span><button type="button" class="primary" data-copytext="${esc(agentPrompt(ids))}" data-what="a prompt for your agent">hand this to your agent</button> <button type="button" data-copytext="${esc(all)}">copy all ${ids.length} fix prompt${ids.length > 1 ? "s" : ""}</button></span></div>` +
         ids.map((id) => {
           const p = P[id];
           if (!p) return "";
@@ -307,7 +384,7 @@
   }
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-copytext]");
-    if (b) copy(b.dataset.copytext, b.textContent.includes("all") ? "all fix prompts" : "fix prompt");
+    if (b) copy(b.dataset.copytext, b.dataset.what || (b.textContent.includes("all") ? "all fix prompts" : "fix prompt"));
     const c = e.target.closest("[data-copy]");
     if (c) copy(c.textContent, "command");
   });
@@ -319,10 +396,12 @@
   window.addEventListener("hashchange", () => {
     if (running) return;
     readHash();
+    renderCase();
     renderSwitches();
     resetStage();
   });
   readHash();
   writeHash();
+  renderCase();
   renderSwitches();
 })();
