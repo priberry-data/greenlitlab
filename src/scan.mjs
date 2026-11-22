@@ -353,7 +353,16 @@ export function codeScan(dir = ".") {
       const re = yaml
         ? /\b(JWT_SECRET|JWT_KEY|SECRET_KEY|SESSION_SECRET|NEXTAUTH_SECRET|AUTH_SECRET|TOKEN_SECRET|COOKIE_SECRET|APP_SECRET|SECRET_KEY_BASE)\s*[:=]\s*["']?([^"'\s#${}][^"'\s#]{0,200})/g
         : /\b(JWT_SECRET|JWT_KEY|SECRET_KEY|SESSION_SECRET|NEXTAUTH_SECRET|AUTH_SECRET|TOKEN_SECRET|COOKIE_SECRET|APP_SECRET|jwtSecret|jwt_secret|sessionSecret|secretKey|secret_key)\b["']?\s*(?:[:=]|\|\||\?\?|,)\s*["'`]([^"'`\s$]{1,200})["'`]|\b(?:JWT_SECRET|SESSION_SECRET|SECRET_KEY|NEXTAUTH_SECRET|AUTH_SECRET)\b["']?\s*\)?\s*(?:\|\||\?\?|or)\s*["'`]([^"'`\s$]{1,200})["'`]|(?:environ\.get|getenv)\(\s*["'](?:JWT_SECRET|SECRET_KEY|SESSION_SECRET)["']\s*,\s*["']([^"'\s]{1,200})["']/g;
-      for (const m of code.matchAll(re)) {
+      // The same secret passed straight to the code that uses it, with no variable name to go on:
+      // jwt.sign(user, "supersecretkey"), session({ secret: "keyboard cat" }), cookieParser("..."),
+      // Flask's app.config["SECRET_KEY"] = "...". The literal must end the argument, so a quoted key inside the payload doesn't count.
+      const direct = yaml ? [] : [
+        /\b(?:jwt|jsonwebtoken|JWT)\s*\.\s*(?:sign|verify)\s*\([^;]{0,300}?,\s*()["'`]([^"'`\s$]{1,200})["'`]\s*[,)]/g,
+        /\b(?:session|cookieSession|expressSession)\s*\(\s*\{[^}]{0,300}?\b(?:secret|keys)\s*:\s*\[?\s*()["'`]([^"'`$\n]{1,200})["'`]/g,
+        /\bcookieParser\s*\(\s*()["'`]([^"'`\s$]{1,200})["'`]/g,
+        /\bconfig\s*\[\s*["'](?:SECRET_KEY|JWT_SECRET_KEY)["']\s*\]\s*=\s*()["']([^"'\s]{1,200})["']/g,
+      ];
+      for (const m of [...code.matchAll(re), ...direct.flatMap((d) => [...code.matchAll(d)])]) {
         const v = m[2] ?? m[3] ?? m[4] ?? "";
         if (!v || /^(process|import|os\.|env|config|settings|\$|\{|true|false|null|none|undefined)/i.test(v) || PLACEHOLDER.test(v) && !/secret|changeme/i.test(v)) continue;
         if (/\.(example|sample)\b/.test(name)) continue;
