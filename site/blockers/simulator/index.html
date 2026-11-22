@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leak simulator · launch blockers</title>
+<meta name="description" content="Build a small AI-built app, flip the settings that leak, and watch a stranger take the data. Every leak links to a dated public incident and a fix prompt.">
+<meta name="theme-color" content="#0B0606">
+<link rel="canonical" href="https://greenlit.priberry.com/blockers/simulator/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Leak simulator: watch a stranger read your app's data">
+<meta property="og:description" content="Flip the settings that leaked real users' data, let a stranger try, and get the fix prompt for each leak.">
+<meta property="og:url" content="https://greenlit.priberry.com/blockers/simulator/">
+<meta property="og:image" content="https://greenlit.priberry.com/blockers/simulator/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://greenlit.priberry.com/blockers/simulator/og.png">
+<link rel="icon" href="../brand/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="sim.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the simulator</a>
+<header class="bar">
+  <span class="home"><span class="logo" aria-hidden="true">■</span>leak simulator</span>
+  <span class="dim small">part of <a href="../">launch blockers</a></span>
+</header>
+
+<main id="main">
+  <section class="intro">
+    <h1>Watch a stranger read your app's data</h1>
+    <p class="lede">This is a small app like the ones Lovable, Bolt, v0 or Claude Code build: a database, file storage, a backend function, payments. Each switch below is a setting that has leaked real users' data. Set them, then let a stranger try. Nothing here touches a real app. Every name and number is made up.</p>
+  </section>
+
+  <section class="presets" aria-label="Start from">
+    <span class="dim">start from:</span>
+    <button type="button" data-preset="typical">a typical first launch</button>
+    <button type="button" data-preset="locked">everything locked down</button>
+    <button type="button" data-preset="all">everything open</button>
+  </section>
+
+  <div class="grid">
+    <section class="panel settings" aria-labelledby="settings-t">
+      <h2 id="settings-t" class="title"><span>═ your app's settings ═</span></h2>
+      <ol id="switches" class="switches"></ol>
+    </section>
+
+    <section class="panel stage" aria-labelledby="stage-t">
+      <h2 id="stage-t" class="title"><span>═ the app ═</span></h2>
+      <div class="map" id="map">
+        <div class="node stranger" data-node="stranger"><span class="n-name">stranger</span><span class="n-sub">no account, just a browser</span></div>
+        <div class="nodes">
+          <div class="node" data-node="browser"><span class="n-name">browser code</span><span class="n-sub">the JavaScript every visitor downloads</span></div>
+          <div class="node" data-node="db"><span class="n-name">database</span><span class="n-sub">profiles · messages · admin_notes</span></div>
+          <div class="node" data-node="storage"><span class="n-name">file storage</span><span class="n-sub">bucket: id-photos</span></div>
+          <div class="node" data-node="fn"><span class="n-name">backend function</span><span class="n-sub">ai-chat</span></div>
+          <div class="node" data-node="webhook"><span class="n-name">payment webhook</span><span class="n-sub">stripe-webhook</span></div>
+          <div class="node" data-node="auth"><span class="n-name">logins</span><span class="n-sub">signed tokens</span></div>
+          <div class="node" data-node="repo"><span class="n-name">code repository</span><span class="n-sub">public on GitHub</span></div>
+          <div class="node" data-node="firebase"><span class="n-name">firestore</span><span class="n-sub">chats collection</span></div>
+        </div>
+      </div>
+      <div class="controls">
+        <button type="button" id="run" class="primary">▶ let the stranger try</button>
+        <button type="button" id="share">copy link to this setup</button>
+        <label class="speed"><input type="checkbox" id="fast"> fast</label>
+      </div>
+      <div class="tally" id="tally" aria-live="polite"></div>
+      <pre class="log" id="log" aria-live="polite" tabindex="0"><span class="dim">Set the switches, then press "let the stranger try".</span></pre>
+    </section>
+  </div>
+
+  <section class="panel report" id="report" hidden aria-labelledby="report-t">
+    <h2 id="report-t" class="title"><span>═ what leaked, and the fix ═</span></h2>
+    <div id="report-body"></div>
+  </section>
+
+  <section class="outro">
+    <p>Your real app can have the same settings. Check it on your own computer before you launch (nothing is uploaded):</p>
+    <pre class="out install"><span class="p">$</span> <span data-copy>npx launch-blockers check</span></pre>
+    <p class="dim small">The simulated stranger does what the public write-ups describe, in simplified form. Settings changed only in a dashboard never show up in your files; check a live app you own with <code>npx greenlitlab yourapp.com --mine</code>.</p>
+  </section>
+</main>
+
+<footer class="bar dim small">
+  <span>Made by <a href="https://priberry.com">Priberry</a> · Apache-2.0 · no tracking</span>
+  <span>Patterns: <a href="https://github.com/priberry-data/launch-blockers/blob/main/PLAYBOOK.md">PLAYBOOK.md</a></span>
+</footer>
+
+<div class="packet" id="packet" aria-hidden="true"></div>
+<script src="patterns.js"></script>
+<script src="sim.js"></script>
+</body>
+</html>
