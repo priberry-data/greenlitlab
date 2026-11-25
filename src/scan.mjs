@@ -25,6 +25,8 @@ const PAID = "OPENAI|ANTHROPIC|CLAUDE|GEMINI|GOOGLE_AI|GOOGLE_GENAI|GROQ|OPENROU
 const PAID_KEY_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}(?![A-Z0-9_]*(?:PUBLISHABLE|_PK(?:_|$)|PUBLIC_KEY|ANON|CLIENT_ID|SITE_KEY|APP_ID|PROJECT_ID|ACCOUNT_ID|MEASUREMENT|STOREFRONT))[A-Z0-9_]*?(?:${PAID})[A-Z0-9_]*?(?:KEY|TOKEN))(?![A-Z0-9_])`, "g");
 const SAMPLE_PATH = /(^|\/)(examples?|fixtures?|__fixtures__|test-fixtures|testdata|__tests__)\/|^tests?\//i;
 const TEST_FILE = /(^|\/)test_[^/]*\.py$|_test\.(py|go|rb)$/i;
+// WITH (security_invoker) with no value means on, the same as security_invoker = true.
+const INVOKER = /security_invoker\s*(=\s*(on|true|1|yes)\b|[,)])/i;
 // A folder of SQL written for MySQL or SQLite: one file with their syntax marks the whole folder.
 const NOT_PG = /\bAUTO_?INCREMENT\b|\bENGINE\s*=|\bPRAGMA\s|\bWITHOUT\s+ROWID\b|\bINSERT\s+OR\s+(IGNORE|REPLACE)\b|datetime\(\s*'now'|\bsqlite\b/i;
 const notPgDirs = new Map();
@@ -244,7 +246,7 @@ function signsItself(dir, re = SIGNATURE) {
 }
 
 // A function that checks the signed-in user in its own code (common when verify_jwt is off for the newer signing keys).
-const CHECKS_USER = /\bauth\s*\.\s*getUser\s*\(|\bgetClaims\s*\(|\bjwtVerify\s*\(|\bverify(?:JWT|Jwt|Token)\s*\(/;
+const CHECKS_USER = /\bauth\s*\.\s*getUser\s*\(|\bgetClaims\s*\(|\bjwtVerify\s*\(|\bverify(?:JWT|Jwt|Token)\s*\(|headers\.get\(\s*["'`]x-(?:api-key|cron-secret|webhook-secret)["'`]\s*\)|\bCRON_SECRET\b/i;
 
 // Code that runs in the visitor's browser, judged by where it lives and what it says about itself.
 function clientSide(name, text, project) {
@@ -557,12 +559,12 @@ export function codeScan(dir = ".") {
       if ((m = s.match(new RegExp(String.raw`^\s*create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?${IDENT}`, "i")))) {
         if ((m[1] || "public").toLowerCase() !== "public") continue;
         const view = m[2].toLowerCase();
-        views.set(view, { where: at(i), invoker: /security_invoker\s*=\s*(on|true|1|yes)/i.test(s), auth: /\bauth\s*\.\s*users\b/i.test(s), materialized: /materialized/i.test(m[0]), revoked: false });
+        views.set(view, { where: at(i), invoker: INVOKER.test(s), auth: /\bauth\s*\.\s*users\b/i.test(s), materialized: /materialized/i.test(m[0]), revoked: false });
         continue;
       }
       if ((m = s.match(new RegExp(String.raw`^\s*alter\s+view\s+(?:if\s+exists\s+)?${IDENT}\s+set\s*\(([^)]*)\)`, "i")))) {
         const v = views.get(m[2].toLowerCase());
-        if (v && /security_invoker\s*=\s*(on|true|1|yes)/i.test(m[3])) v.invoker = true;
+        if (v && INVOKER.test(m[3])) v.invoker = true;
         continue;
       }
       if ((m = s.match(/^\s*revoke\s+[\w\s,]*?\bon\s+(?:table\s+)?(?:"?public"?\s*\.\s*)?"?(\w+)"?\s+from\s+([\w\s,]+)/i))) {
@@ -743,6 +745,8 @@ export function trackedEnvSecrets(file) {
     const value = rawValue.replace(/\s+#.*$/, "").replace(/^(["'])(.*)\1$/, "$2").trim();
     if (!value || /^(your|xxx|changeme|replace|<|\$\{|\{\{)|fake|dummy|placeholder/i.test(value)) continue;
     if (BROWSER_SAFE_ENV.test(name) || !SECRET_ENV.test(name)) continue;
+    // A name with a public prefix ships to the browser anyway; if it's a secret, the public-secret check says so.
+    if (/^(VITE_|NEXT_PUBLIC_|PUBLIC_|EXPO_PUBLIC_|REACT_APP_|NUXT_PUBLIC_|GATSBY_)/.test(name)) continue;
     out.push(name);
   }
   return out;
