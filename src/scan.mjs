@@ -642,10 +642,17 @@ export function codeScan(dir = ".") {
     // From the top of the repository: a .env committed above the folder being checked still ships with it.
     const top = execFileSync("git", ["-C", root, "rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     const tracked = execFileSync("git", ["-C", top, "ls-files"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 }).split("\n");
-    const env = tracked.find((f) => /(^|\/)(\.env(\.[\w.-]+)?|\.dev\.vars)$/.test(f) && !/\.(example|sample|template|defaults?|dist|schema)$/.test(f));
-    if (env) {
+    const envs = tracked.filter((f) => /(^|\/)(\.env(\.[\w.-]+)?|\.dev\.vars)$/.test(f) && !/\.(example|sample|template|defaults?|dist|schema)$/.test(f));
+    // Lovable and others commit a .env that holds only browser-safe values (the Supabase URL and
+    // publishable key). That is not a leak, so flag a tracked .env only when it holds a filled-in
+    // value whose name says it is secret. Values are read to see whether they are empty, never shown.
+    for (const env of envs) {
+      const secrets = trackedEnvSecrets(path.join(top, env));
+      if (secrets === null || !secrets.length) continue;
       const shown = path.relative(root, path.join(top, env)).split(path.sep).join("/") || env;
-      add({ id: "scan:env-tracked", severity: "high", where: shown, title: `Your ${env} file is saved in version control`, why: "Everyone with access to the repository, now or later, has every key in it. If the repository is public, so does the world.", fix: "Remove it from git, add it to .gitignore, and replace the keys it held.", first: "Replace every key in that file: once committed, a key stays in the history.", prompt: `My ${env} file is tracked by git. Remove it from version control without deleting my local copy (git rm --cached), add it to .gitignore, and give me an .env.example with the names only. Then list every key that was in it so I can replace each one.` });
+      const list = secrets.slice(0, 8).join(", ") + (secrets.length > 8 ? ` and ${secrets.length - 8} more` : "");
+      add({ id: "scan:env-tracked", severity: "high", where: shown, title: `Your ${env} file is saved in version control, with secrets in it`, why: `It holds ${list}. Everyone with access to the repository, now or later, has those values. If the repository is public, so does the world.`, fix: "Remove it from git, add it to .gitignore, and replace those keys.", first: "Replace each of those keys: once committed, a key stays in the history.", prompt: `My ${env} file is tracked by git and holds secrets (${list}). Remove it from version control without deleting my local copy (git rm --cached), add it to .gitignore, and give me an .env.example with the names only. Then tell me where to replace each of those keys.` });
+      break;
     }
   } catch {
     gitUnavailable = true;
@@ -665,6 +672,29 @@ export function codeScan(dir = ".") {
   const order = ["critical", "high", "medium", "low", "info"];
   findings.sort((a, b) => order.indexOf(a.severity) - order.indexOf(b.severity));
   return { source: "your project's files", dir: root, files: files.length, findings, truncated: walked.truncated, unread, gitUnavailable, nested: walked.nested };
+}
+
+// ---------- Tracked .env files
+// Names that are meant to reach the browser (and are safe there) never count as secrets.
+const BROWSER_SAFE_ENV = /(^|_)(SUPABASE_(URL|ANON_KEY|PUBLISHABLE_KEY|PUBLISHABLE_DEFAULT_KEY|PROJECT_ID|PROJECT_REF)|FIREBASE_(API_KEY|AUTH_DOMAIN|PROJECT_ID|STORAGE_BUCKET|MESSAGING_SENDER_ID|APP_ID|MEASUREMENT_ID|DATABASE_URL)|PUBLISHABLE_KEY|STRIPE_PUBLISHABLE_KEY|CLERK_PUBLISHABLE_KEY|POSTHOG_KEY|SENTRY_DSN|GA_MEASUREMENT_ID|MAPBOX_TOKEN)$/i;
+const SECRET_ENV = /(SECRET|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|SERVICE_ROLE|SERVICE_KEY|TOKEN|API_KEY|ACCESS_KEY|_KEY$|^KEY$|DATABASE_URL|DB_URL|POSTGRES_URL|MONGODB_URI|REDIS_URL|DSN$|WEBHOOK)/i;
+// Returns the names of filled-in secret values in a .env file, or null if it can't be read.
+export function trackedEnvSecrets(file) {
+  let text;
+  try { text = fs.readFileSync(file, "utf8"); } catch { return null; }
+  const out = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const [, name, rawValue] = m;
+    const value = rawValue.replace(/\s+#.*$/, "").replace(/^(["'])(.*)\1$/, "$2").trim();
+    if (!value || /^(your|xxx|changeme|replace|<|\$\{)/i.test(value)) continue;
+    if (BROWSER_SAFE_ENV.test(name) || !SECRET_ENV.test(name)) continue;
+    out.push(name);
+  }
+  return out;
 }
 
 // ---------- Firebase rules
