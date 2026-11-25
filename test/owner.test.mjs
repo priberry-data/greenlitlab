@@ -3,7 +3,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { codeScan } from "../src/scan.mjs";
+import { codeScan, trackedEnvSecrets } from "../src/scan.mjs";
 import { fromAdvisor } from "../src/advisor.mjs";
 import { QUESTIONS, advise } from "../src/questions.mjs";
 import { renderList } from "../src/plain.mjs";
@@ -374,6 +374,25 @@ test("scan: Firebase rules that let anyone in are found; locked-down rules and c
   assert.equal(at("firestore.rules:5").severity, "critical");
   assert.equal(at("storage.rules:1").severity, "high", "a public read of files may be intended (images), so high, not critical");
   assert.equal(f.filter((x) => x.id.startsWith("scan:firebase-open:database")).length, 1, '".write": "auth != null" is not open');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("scan: anyone reading public listings in Firestore is fine; people's data, catch-alls and writes are not", () => {
+  const dir = project({
+    "package.json": "{}",
+    "firestore.rules": "service cloud.firestore {\n  match /databases/{database}/documents {\n    match /properties/{id} { allow read: if true; }\n    match /videos/{v}/comments/{c} { allow read: if true; }\n    match /users/{uid} { allow read: if true; }\n    match /listings/{id} { allow write: if true; }\n    match /{document=**} { allow read: if true; }\n  }\n}\n",
+    "storage.rules": "service firebase.storage { match /b/{bucket}/o { match /images/{f} { allow read: if true; } match /uploads/{uid}/{f} { allow read: if true; } } }\n",
+  });
+  const f = codeScan(dir).findings.filter((x) => x.id.startsWith("scan:firebase-open:"));
+  const lines = f.map((x) => x.where).sort();
+  assert.deepEqual(lines, ["firestore.rules:5", "firestore.rules:6", "firestore.rules:7", "storage.rules:1"]);
+  assert.equal(f.filter((x) => x.where === "storage.rules:1").length, 1, "uploads/ is flagged, images/ is not");
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("scan: a tracked .env with a database address but no password is not a leak", () => {
+  const dir = project({ ".env": "DATABASE_URL=sqlite+aiosqlite:///./app.db\nREDIS_URL=redis://localhost:6379\nPG_URL=postgres://localhost/app\nMONGODB_URI=mongodb+srv://app:hunter2long@cluster0.example.net/db\n" });
+  assert.deepEqual(trackedEnvSecrets(path.join(dir, ".env")), ["MONGODB_URI"]);
   fs.rmSync(dir, { recursive: true });
 });
 

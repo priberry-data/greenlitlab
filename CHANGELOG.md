@@ -11,6 +11,8 @@ Hand-checked against real public Lovable projects (25 November 2026). Each wrong
   - These are no longer read as secrets: secret names in comments, in quoted lists of names, or held as JSON values, and Shopify storefront and EmailJS public keys.
   - `verify_jwt = false` is fine when the function checks the signed-in user (`auth.getUser`, `getClaims`), a cron secret or an API key header in its own code.
   - `with (security_invoker)` with no value counts as on.
+  - A tracked `.env` holding a database address with no password in it (a local SQLite file, `postgres://localhost/app`) isn't a secret.
+  - Firestore and Storage rules that let anyone read a collection are flagged only on catch-all paths or paths that look like people's data (users, messages, orders, uploads…). Public listings, posts and images are often meant to be readable. Open writes and test-mode rules are still always flagged.
 - **Clearer findings:**
   - A login secret used only as a fallback for a missing environment variable (`process.env.JWT_SECRET || "…"`, `os.getenv("SECRET_KEY", "…")`) is its own finding, `scan:auth-secret-fallback`.
   - Login secrets passed straight to `jwt.sign`, express-session, cookieParser or Flask's config are caught.

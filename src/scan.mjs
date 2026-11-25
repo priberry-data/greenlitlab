@@ -747,12 +747,16 @@ export function trackedEnvSecrets(file) {
     if (BROWSER_SAFE_ENV.test(name) || !SECRET_ENV.test(name)) continue;
     // A name with a public prefix ships to the browser anyway; if it's a secret, the public-secret check says so.
     if (/^(VITE_|NEXT_PUBLIC_|PUBLIC_|EXPO_PUBLIC_|REACT_APP_|NUXT_PUBLIC_|GATSBY_)/.test(name)) continue;
+    // A database address with no password in it (a local SQLite file, postgres://localhost/app) is not a secret.
+    if (/^(sqlite|file)[:+]/i.test(value)) continue;
+    if (/^(postgres(ql)?|mysql|mariadb|mongodb(\+srv)?|redis|rediss|mssql)(\+\w+)?:\/\//i.test(value) && !/:\/\/[^/@\s]*:[^@\s]+@/.test(value) && !/[?&](password|pass|pwd|token|key|secret)=/i.test(value)) continue;
     out.push(name);
   }
   return out;
 }
 
 // ---------- Firebase rules
+const PERSONAL_PATH = /(^|\/)[a-z0-9_-]*(user|profile|account|customer|member|message|chat|conversation|order|payment|invoice|transaction|patient|medical|health|booking|appointment|address|contact|lead|employee|student|applica|candidate|document|upload|private|secret|token|credential|session|wallet|notification|inbox|kyc|verif)/i;
 function scanFirebase(name, text, add) {
   if (/\.json$/.test(name)) {
     // Realtime Database: ".read": true anywhere, or "auth != null" for the whole database.
@@ -790,6 +794,10 @@ function scanFirebase(name, text, add) {
     const wildcard = /\{\w+=\*\*\}/.test(matchPath);
     if (signedIn && !wildcard) continue; // "signed in" on one collection is often meant; the agent reviews it
     const writes = actions.some((a) => ["write", "create", "update", "delete"].includes(a));
+    // Anyone reading a collection is often meant (listings, posts, videos, images). Flag an open read only on a
+    // catch-all path or where the path looks like people's data; open writes and test mode are always flagged.
+    const near = paths.slice(-3).map((p) => p[1]).filter((p) => !/^\/(databases|b)\//.test(p)).join("");
+    if (!writes && !testMode && !wildcard && !PERSONAL_PATH.test(near)) continue;
     const line = lineOf(rules, m.index);
     const what = writes ? (actions.some((a) => ["read", "get", "list"].includes(a)) ? "read and change" : "change") : "read";
     const id = `scan:firebase-open:${k}:${shortHash(`${matchPath}|${actions.join(",")}|${cond ?? ""}`)}`;
