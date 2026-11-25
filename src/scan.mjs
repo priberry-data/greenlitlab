@@ -23,7 +23,8 @@ const SECRET_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}[A-Z0-9_]*?(?:SECRET(?:_ACCE
 // Keys made to be public (Stripe publishable, Supabase anon) are left out.
 const PAID = "OPENAI|ANTHROPIC|CLAUDE|GEMINI|GOOGLE_AI|GOOGLE_GENAI|GROQ|OPENROUTER|MISTRAL|PERPLEXITY|REPLICATE|HUGGINGFACE|HF|DEEPSEEK|XAI|GROK|COHERE|TOGETHER|FIREWORKS|ELEVENLABS|DEEPGRAM|ASSEMBLYAI|PINECONE|VOYAGE|FAL|RUNWAY|STABILITY|TAVILY|SERPAPI|FIRECRAWL|EXA|RESEND|SENDGRID|MAILGUN|POSTMARK|BREVO|TWILIO|GITHUB|STRIPE|PAYPAL|RAZORPAY|LEMONSQUEEZY|LEMON_SQUEEZY|PADDLE|AWS|NOTION|AIRTABLE|SLACK|DISCORD|TELEGRAM|SHOPIFY|HUBSPOT|MAPBOX_SECRET|ALGOLIA_ADMIN|UPSTASH";
 const PAID_KEY_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}(?![A-Z0-9_]*(?:PUBLISHABLE|_PK(?:_|$)|PUBLIC_KEY|ANON|CLIENT_ID|SITE_KEY|APP_ID|PROJECT_ID|ACCOUNT_ID|MEASUREMENT|STOREFRONT))[A-Z0-9_]*?(?:${PAID})[A-Z0-9_]*?(?:KEY|TOKEN))(?![A-Z0-9_])`, "g");
-const SAMPLE_PATH = /(^|\/)(examples?|fixtures?|__fixtures__|test-fixtures|testdata|__tests__)\/|^tests?\/|(^|\/)test_[^/]*\.py$|_test\.(py|go|rb)$/i;
+const SAMPLE_PATH = /(^|\/)(examples?|fixtures?|__fixtures__|test-fixtures|testdata|__tests__)\/|^tests?\//i;
+const TEST_FILE = /(^|\/)test_[^/]*\.py$|_test\.(py|go|rb)$/i;
 // A folder of SQL written for MySQL or SQLite: one file with their syntax marks the whole folder.
 const NOT_PG = /\bAUTO_?INCREMENT\b|\bENGINE\s*=|\bPRAGMA\s|\bWITHOUT\s+ROWID\b|\bINSERT\s+OR\s+(IGNORE|REPLACE)\b|datetime\(\s*'now'|\bsqlite\b/i;
 const notPgDirs = new Map();
@@ -300,8 +301,10 @@ export function codeScan(dir = ".") {
   for (const file of files) {
     const name = rel(file);
     if (/\.(test|spec)\.[a-z]+$/i.test(name)) continue;
+    if (TEST_FILE.test(name)) continue;
     // Examples, fixtures and tests aren't the app people use: security tools plant leaks there on purpose.
-    if (SAMPLE_PATH.test(name)) continue;
+    // Only a key with a real key's shape still counts there, since a real one works wherever it is written.
+    const sample = SAMPLE_PATH.test(name);
     if (/(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lock|composer\.lock)$/.test(name)) continue;
     let text = "";
     try {
@@ -320,12 +323,13 @@ export function codeScan(dir = ".") {
     const isEnv = /(^|\/)(\.env[^/]*|\.dev\.vars)$/.test(name);
 
     // Names only: a secret behind a public prefix is copied into the code every visitor downloads.
-    for (const m of [...text.matchAll(SECRET_NAME), ...text.matchAll(PAID_KEY_NAME)]) {
+    for (const m of sample ? [] : [...text.matchAll(SECRET_NAME), ...text.matchAll(PAID_KEY_NAME)]) {
       if (isEnv && !new RegExp(`^\\s*(?:export\\s+)?${m[1]}\\s*=`, "m").test(text)) continue;
       if (!isEnv && inComment(text, m.index)) continue;
       add({ id: `scan:public-secret:${m[1]}`, severity: "critical", where: `${name}:${lineOf(text, m.index)}`, title: `The secret ${m[1]} is named so it ships to the browser`, why: "Anything whose name starts with a public prefix (VITE_, NEXT_PUBLIC_ and the like) is copied into the JavaScript every visitor downloads. A secret there is public.", fix: "Rename it without the public prefix and use it only in backend code.", first: "Treat this key as leaked if the app has ever been deployed with it: revoke it and make a new one.", prompt: `My project has a secret named ${m[1]}. The public prefix means it is built into the frontend, where anyone can read it. Rename it without the prefix, move every use of it into backend code (an edge function or server route) that checks the user is signed in, and confirm it no longer appears anywhere in the frontend build. List the files you changed.` });
     }
     if (isEnv) continue;
+    if (sample && (/\.(rules|sql)$/.test(name) || /(^|\/)(database\.rules\.json|supabase\/config\.toml)$/.test(name))) continue;
 
     // Firebase rules, wherever firebase.json says they are.
     if (/\.rules$/.test(name) || (/(^|\/)database\.rules\.json$/.test(name))) {
@@ -349,6 +353,7 @@ export function codeScan(dir = ".") {
     const code = /\.(js|jsx|ts|tsx|mjs|cjs|vue|svelte|astro)$/.test(name) ? jsNoComments(text) : text;
     const client = clientSide(name, text, project);
 
+    if (sample && /\.(example|sample)\./.test(name)) continue;
     // Keys written into the code itself, recognised by their shape.
     if (!/\.(example|sample)\./.test(name)) {
       for (const [kind, re] of KEY_SHAPES) {
@@ -359,6 +364,7 @@ export function codeScan(dir = ".") {
           break;
         }
       }
+      if (sample) continue;
       // A Supabase key whose role is service_role: it skips every Row Level Security rule.
       for (const m of code.matchAll(/\beyJ[A-Za-z0-9_-]{10,}\.(eyJ[A-Za-z0-9_-]{10,})\.[A-Za-z0-9_-]{8,}/g)) {
         let role = "";
