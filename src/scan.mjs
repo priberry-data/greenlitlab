@@ -409,6 +409,13 @@ export function codeScan(dir = ".") {
         // ({ "env": "APP_SECRET", "bytes": 32 }) is not a secret.
         if (/["'`]$/.test(code.slice(0, m.index)) && /[[,:]\s*["'`]$/.test(code.slice(Math.max(0, m.index - 40), m.index))) continue;
         const line = lineOf(code, m.index);
+        // process.env.JWT_SECRET || "dev-secret", os.getenv("SECRET_KEY", "dev"): the literal is used only when
+        // the variable is missing. Still a blocker (that is how the Invicti admin takeover worked), named for what it is.
+        const fallback = /\|\||\?\?/.test(m[0]) || (/,/.test(m[0]) && /(getenv|environ\.get|env\.get|Deno\.env\.get|config\.get)\s*\(\s*["'`]?$/.test(code.slice(Math.max(0, m.index - 80), m.index)));
+        if (fallback) {
+          add({ id: `scan:auth-secret-fallback:${name}`, severity: "high", where: `${name}:${line}`, title: "If the login secret isn't set, the app signs logins with one written in the code", why: "The app reads its signing secret from an environment variable but falls back to a fixed value when it's missing. One forgotten variable on a new server and anyone who has read this code can make a valid login for any user. Invicti found the same few fallback values (like \"supersecretkey\") in over a thousand AI-generated apps.", fix: "Remove the fallback and make the app refuse to start without the variable.", first: "Check that production sets the variable. If it ever ran without it, change the secret.", prompt: `${name} line ${line} falls back to a fixed login secret when the environment variable is missing. Don't show me the value. Remove the fallback, make the app refuse to start if the variable isn't set, and tell me how to generate a long random one.` });
+          break;
+        }
         add({ id: `scan:hardcoded-auth-secret:${name}`, severity: "high", where: `${name}:${line}`, title: "A login secret is written into the code", why: "The secret that signs login tokens or sessions is a fixed value in this file. Anyone who reads it can make a valid login for any user. Invicti found the same few values (like \"supersecretkey\") in over a thousand AI-generated apps.", fix: "Generate a long random secret, keep it in an environment variable, and fail to start if it's missing.", first: "Change the secret in production: every token signed with the old one stays valid until you do.", prompt: `${name} line ${line} sets the secret that signs logins or sessions to a fixed value (or falls back to one when the environment variable is missing). Don't show me the value. Make the app read it only from an environment variable, refuse to start if it isn't set, and tell me how to generate a long random one. Then remind me that changing it signs everyone out.` });
         break;
       }
