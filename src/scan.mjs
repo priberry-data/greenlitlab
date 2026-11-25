@@ -220,7 +220,7 @@ function walk(root) {
 
 // Whether a function's own code checks a webhook signature (Stripe, Svix/Resend/Clerk, GitHub, Lemon Squeezy, Paddle).
 const SIGNATURE = /constructEvent(?:Async)?\s*\(|webhooks?\.verify\s*\(|new\s+Webhook\s*\([\s\S]*?\.verify\s*\(|x-hub-signature|x-signature|paddle-signature|timingSafeEqual|construct_event\s*\(/i;
-function signsItself(dir) {
+function signsItself(dir, re = SIGNATURE) {
   let found = false;
   const stack = [dir];
   while (stack.length && !found) {
@@ -234,13 +234,16 @@ function signsItself(dir) {
       if (e.isDirectory()) e.name !== "node_modules" && stack.push(full);
       else if (/\.(ts|js|mjs)$/.test(e.name)) {
         try {
-          if (SIGNATURE.test(jsNoComments(fs.readFileSync(full, "utf8")))) found = true;
+          if (re.test(jsNoComments(fs.readFileSync(full, "utf8")))) found = true;
         } catch {}
       }
     }
   }
   return found;
 }
+
+// A function that checks the signed-in user in its own code (common when verify_jwt is off for the newer signing keys).
+const CHECKS_USER = /\bauth\s*\.\s*getUser\s*\(|\bgetClaims\s*\(|\bjwtVerify\s*\(|\bverify(?:JWT|Jwt|Token)\s*\(/;
 
 // Code that runs in the visitor's browser, judged by where it lives and what it says about itself.
 function clientSide(name, text, project) {
@@ -396,8 +399,9 @@ export function codeScan(dir = ".") {
         const v = m[2] ?? m[3] ?? m[4] ?? "";
         if (!v || /^(process|import|os\.|env|config|settings|\$|\{|true|false|null|none|undefined)/i.test(v) || PLACEHOLDER.test(v) && !/secret|changeme/i.test(v)) continue;
         if (/\.(example|sample)\b/.test(name)) continue;
-        // A list of names, like ['publishableKey', 'secretKey', 'webhookSecret'], is not a secret.
-        if (/["'`]$/.test(code.slice(0, m.index)) && /[[,]\s*["'`]$/.test(code.slice(Math.max(0, m.index - 40), m.index))) continue;
+        // A list of names, like ['publishableKey', 'secretKey', 'webhookSecret'], or a name held as a value
+        // ({ "env": "APP_SECRET", "bytes": 32 }) is not a secret.
+        if (/["'`]$/.test(code.slice(0, m.index)) && /[[,:]\s*["'`]$/.test(code.slice(Math.max(0, m.index - 40), m.index))) continue;
         const line = lineOf(code, m.index);
         add({ id: `scan:hardcoded-auth-secret:${name}`, severity: "high", where: `${name}:${line}`, title: "A login secret is written into the code", why: "The secret that signs login tokens or sessions is a fixed value in this file. Anyone who reads it can make a valid login for any user. Invicti found the same few values (like \"supersecretkey\") in over a thousand AI-generated apps.", fix: "Generate a long random secret, keep it in an environment variable, and fail to start if it's missing.", first: "Change the secret in production: every token signed with the old one stays valid until you do.", prompt: `${name} line ${line} sets the secret that signs logins or sessions to a fixed value (or falls back to one when the environment variable is missing). Don't show me the value. Make the app read it only from an environment variable, refuse to start if it isn't set, and tell me how to generate a long random one. Then remind me that changing it signs everyone out.` });
         break;
@@ -583,7 +587,9 @@ export function codeScan(dir = ".") {
       if (section[0] === "functions" && section[1] && /^\s*verify_jwt\s*=\s*false\b/.test(line)) {
         const fn = section[1];
         const where = `${name}:${k + 1}`;
-        if (signsItself(path.join(path.dirname(file), "functions", fn)))
+        const fnDir = path.join(path.dirname(file), "functions", fn);
+        if (signsItself(fnDir, CHECKS_USER)) continue;
+        if (signsItself(fnDir))
           add({ id: `scan:verify-jwt:${fn}`, severity: "low", where, title: `The function "${fn}" skips the sign-in check and verifies a signature instead`, why: "That is the right setup for a webhook. Greenlit saw a signature check in its code but can't confirm it runs before anything else.", fix: "Make sure the signature check is the first thing the function does.", first: null, prompt: `My Supabase edge function "${fn}" has verify_jwt = false and verifies a webhook signature. Confirm the signature check runs before the function reads or changes anything, and that a request with a missing or wrong signature gets a 400. Change nothing unless it doesn't.` });
         else add({ id: `scan:verify-jwt:${fn}`, severity: "high", where, title: `The function "${fn}" skips the sign-in check`, why: "verify_jwt = false means anyone on the internet can call this function. That is right only for webhooks that check a signature themselves.", fix: "Remove verify_jwt = false, or verify a signature inside the function.", first: null, prompt: `My Supabase edge function "${fn}" has verify_jwt = false, so anyone can call it. If it is a webhook, make it verify the sender's signature before doing anything. Otherwise remove that setting and make the function check the signed-in user and what they are allowed to do. Show me what you changed.` });
       }
@@ -674,14 +680,14 @@ export function codeScan(dir = ".") {
     // From the top of the repository: a .env committed above the folder being checked still ships with it.
     const top = execFileSync("git", ["-C", root, "rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     const tracked = execFileSync("git", ["-C", top, "ls-files"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 }).split("\n");
-    const envs = tracked.filter((f) => /(^|\/)(\.env(\.[\w.-]+)?|\.dev\.vars)$/.test(f) && !/\.(example|sample|template|defaults?|dist|schema)$/.test(f));
+    const envs = tracked.filter((f) => /(^|\/)(\.env(\.[\w.-]+)?|\.dev\.vars)$/.test(f) && !/\.(example|sample|template|defaults?|dist|schema|fixture|test)$/.test(f) && !SAMPLE_PATH.test(f));
     // Lovable and others commit a .env that holds only browser-safe values (the Supabase URL and
     // publishable key). That is not a leak, so flag a tracked .env only when it holds a filled-in
     // value whose name says it is secret. Values are read to see whether they are empty, never shown.
     for (const env of envs) {
       const secrets = trackedEnvSecrets(path.join(top, env));
       if (secrets === null || !secrets.length) continue;
-      const shown = path.relative(root, path.join(top, env)).split(path.sep).join("/") || env;
+      const shown = path.relative(fs.realpathSync(root), path.join(top, env)).split(path.sep).join("/") || env;
       const list = secrets.slice(0, 8).join(", ") + (secrets.length > 8 ? ` and ${secrets.length - 8} more` : "");
       add({ id: "scan:env-tracked", severity: "high", where: shown, title: `Your ${env} file is saved in version control, with secrets in it`, why: `It holds ${list}. Everyone with access to the repository, now or later, has those values. If the repository is public, so does the world.`, fix: "Remove it from git, add it to .gitignore, and replace those keys.", first: "Replace each of those keys: once committed, a key stays in the history.", prompt: `My ${env} file is tracked by git and holds secrets (${list}). Remove it from version control without deleting my local copy (git rm --cached), add it to .gitignore, and give me an .env.example with the names only. Then tell me where to replace each of those keys.` });
       break;
@@ -722,7 +728,7 @@ export function trackedEnvSecrets(file) {
     if (!m) continue;
     const [, name, rawValue] = m;
     const value = rawValue.replace(/\s+#.*$/, "").replace(/^(["'])(.*)\1$/, "$2").trim();
-    if (!value || /^(your|xxx|changeme|replace|<|\$\{)/i.test(value)) continue;
+    if (!value || /^(your|xxx|changeme|replace|<|\$\{|\{\{)|fake|dummy|placeholder/i.test(value)) continue;
     if (BROWSER_SAFE_ENV.test(name) || !SECRET_ENV.test(name)) continue;
     out.push(name);
   }
