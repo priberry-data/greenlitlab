@@ -1,6 +1,21 @@
 # Changelog
 
-## 0.5.0 (unreleased)
+## 0.5.1 (unreleased)
+
+Hand-checked against real public Lovable projects (25 November 2026). Each wrong answer became a test case.
+
+- **Fewer false alarms:**
+  - Lovable's default `.env` (Supabase URL and publishable key) is fine. A tracked `.env` is flagged only when it holds a filled-in secret whose name doesn't ship to the browser anyway.
+  - Examples, fixtures and root `tests/` folders are skipped, because security tools plant leaks there on purpose. A key with a real key's shape still counts there.
+  - Row Level Security isn't expected of MySQL or SQLite migrations.
+  - These are no longer read as secrets: secret names in comments, in quoted lists of names, or held as JSON values, and Shopify storefront and EmailJS public keys.
+  - `verify_jwt = false` is fine when the function checks the signed-in user (`auth.getUser`, `getClaims`), a cron secret or an API key header in its own code.
+  - `with (security_invoker)` with no value counts as on.
+- **Clearer findings:**
+  - A login secret used only as a fallback for a missing environment variable (`process.env.JWT_SECRET || "…"`, `os.getenv("SECRET_KEY", "…")`) is its own finding, `scan:auth-secret-fallback`.
+  - Login secrets passed straight to `jwt.sign`, express-session, cookieParser or Flask's config are caught.
+
+## 0.5.0 (23 November 2026)
 
 `greenlit scan` was rebuilt after an adversarial audit of the project scan that Launch Blockers runs before deploys.
 
