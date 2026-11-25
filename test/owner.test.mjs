@@ -380,13 +380,24 @@ test("scan: Firebase rules that let anyone in are found; locked-down rules and c
 test("scan: anyone reading public listings in Firestore is fine; people's data, catch-alls and writes are not", () => {
   const dir = project({
     "package.json": "{}",
-    "firestore.rules": "service cloud.firestore {\n  match /databases/{database}/documents {\n    match /properties/{id} { allow read: if true; }\n    match /videos/{v}/comments/{c} { allow read: if true; }\n    match /users/{uid} { allow read: if true; }\n    match /listings/{id} { allow write: if true; }\n    match /{document=**} { allow read: if true; }\n  }\n}\n",
+    "firestore.rules": "service cloud.firestore {\n  match /databases/{database}/documents {\n    match /leads/{id} { allow read: if request.auth.uid == id; }\n    match /properties/{id} { allow read: if true; }\n    match /videos/{v}/comments/{c} { allow read: if true; }\n    match /users/{uid} { allow read: if true; }\n    match /listings/{id} { allow write: if true; }\n    match /{document=**} { allow read: if true; }\n  }\n}\n",
     "storage.rules": "service firebase.storage { match /b/{bucket}/o { match /images/{f} { allow read: if true; } match /uploads/{uid}/{f} { allow read: if true; } } }\n",
   });
   const f = codeScan(dir).findings.filter((x) => x.id.startsWith("scan:firebase-open:"));
   const lines = f.map((x) => x.where).sort();
-  assert.deepEqual(lines, ["firestore.rules:5", "firestore.rules:6", "firestore.rules:7", "storage.rules:1"]);
+  assert.deepEqual(lines, ["firestore.rules:6", "firestore.rules:7", "firestore.rules:8", "storage.rules:1"], "a sibling path (leads) above properties does not make properties personal");
   assert.equal(f.filter((x) => x.where === "storage.rules:1").length, 1, "uploads/ is flagged, images/ is not");
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("scan: an AI SDK in the browser counts only when the key comes from the build or is written in, not the visitor's own", () => {
+  const dir = project({
+    "package.json": '{"dependencies":{"openai":"4"}}',
+    "src/byok.ts": "export const c = (settings) => new OpenAI({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true });",
+    "src/env.ts": "export const c = new OpenAI({ apiKey: import.meta.env.VITE_OPENAI_KEY, dangerouslyAllowBrowser: true });",
+  });
+  const ids = codeScan(dir).findings.map((f) => f.id).filter((id) => id.startsWith("scan:ai-in-browser"));
+  assert.deepEqual(ids, ["scan:ai-in-browser:src/env.ts"]);
   fs.rmSync(dir, { recursive: true });
 });
 

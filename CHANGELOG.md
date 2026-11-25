@@ -13,6 +13,7 @@ Hand-checked against real public Lovable projects (25 November 2026). Each wrong
   - `with (security_invoker)` with no value counts as on.
   - A tracked `.env` holding a database address with no password in it (a local SQLite file, `postgres://localhost/app`) isn't a secret.
   - Firestore and Storage rules that let anyone read a collection are flagged only on catch-all paths or paths that look like people's data (users, messages, orders, uploads…). Public listings, posts and images are often meant to be readable. Open writes and test-mode rules are still always flagged.
+  - An AI SDK set to run in the browser (`dangerouslyAllowBrowser: true`) is flagged only when its key comes from the build environment or is written into the code, not when the visitor types in their own key.
 - **Clearer findings:**
   - A login secret used only as a fallback for a missing environment variable (`process.env.JWT_SECRET || "…"`, `os.getenv("SECRET_KEY", "…")`) is its own finding, `scan:auth-secret-fallback`.
   - Login secrets passed straight to `jwt.sign`, express-session, cookieParser or Flask's config are caught.
