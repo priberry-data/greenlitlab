@@ -386,7 +386,7 @@ export function codeScan(dir = ".") {
       add({ id: `scan:service-role-client:${name}`, severity: "critical", where: `${name}:${lineOf(code, code.search(SR_USE))}`, title: "Browser code uses the Supabase service_role key", why: "This file runs in the visitor's browser and builds a Supabase client with the service_role key, which skips every Row Level Security rule. Anyone can take it from the page.", fix: "Use the anon key here and move anything that needs service_role into an edge function.", first: "If this has been deployed, rotate the service_role key.", prompt: `${name} runs in the browser and uses my Supabase service_role key. Change it to use the anon (publishable) key, move anything that really needs service_role into a Supabase edge function or server route that checks the signed-in user, and confirm the service_role key appears nowhere in the frontend build.` });
     // An AI SDK told to run in the browser ships its key to every visitor.
     // Bring-your-own-key apps (the visitor types their own key) are fine: flag only a key from the build env or written in.
-    if (/[{,]\s*dangerouslyAllowBrowser\s*:\s*true/.test(code) && (/\b(import\.meta\.env|process\.env|Deno\.env)\b/.test(code) || /\bapiKey\s*:\s*["'`][A-Za-z0-9_-]{20,}["'`]/.test(code)))
+    if (/[{,]\s*dangerouslyAllowBrowser\s*:\s*true/.test(code) && (/\b(import\.meta\.env|process\.env|Deno\.env)\b/.test(code) || /\bapiKey\s*:\s*["'`]((sk-|sk_|gsk_|xai-|pplx-|AIza)[A-Za-z0-9_-]{16,}|[A-Za-z0-9]{32,})["'`]/.test(code)))
       add({ id: `scan:ai-in-browser:${name}`, severity: "high", where: `${name}:${lineOf(code, code.search(/dangerouslyAllowBrowser/))}`, title: "An AI SDK is set to run in the browser", why: "dangerouslyAllowBrowser: true means the AI provider's key is in the page. Anyone can copy it and run up your bill, as happened to thousands of sites with exposed ChatGPT keys.", fix: "Call the AI provider from a server route or edge function and keep the key there.", first: "Revoke the key this code uses and make a new one.", prompt: `${name} calls an AI provider from the browser with dangerouslyAllowBrowser: true, so the API key ships to every visitor. Move the call into a server route or edge function that checks the user is signed in and limits how often they can call it, keep the key in a server-side secret, and remove dangerouslyAllowBrowser. Show me the change.` });
 
     // A login or session secret written into the code: anyone with the code can sign in as anyone.
@@ -767,7 +767,7 @@ function enclosingMatches(rules, at) {
   }
   return stack.filter(Boolean);
 }
-const PERSONAL_PATH = /(^|\/)[a-z0-9_-]*(user|profile|account|customer|member|message|chat|conversation|order|payment|invoice|transaction|patient|medical|health|booking|appointment|address|contact|lead|employee|student|applica|candidate|document|upload|private|secret|token|credential|session|wallet|notification|inbox|kyc|verif)/i;
+const PERSONAL_PATH = /(^|\/)[a-z0-9_-]*(user|profile|account|customer|member|message|chat|conversation|order|payment|invoice|transaction|patient|medical|health|booking|appointment|address|contact|lead(?!er)|employee|student|applica|candidate|document|upload|private|secret|token|credential|session|wallet|notification|inbox|kyc|verif)/i;
 function scanFirebase(name, text, add) {
   if (/\.json$/.test(name)) {
     // Realtime Database: ".read": true anywhere, or "auth != null" for the whole database.

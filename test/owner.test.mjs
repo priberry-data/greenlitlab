@@ -395,9 +395,11 @@ test("scan: an AI SDK in the browser counts only when the key comes from the bui
     "package.json": '{"dependencies":{"openai":"4"}}',
     "src/byok.ts": "export const c = (settings) => new OpenAI({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true });",
     "src/env.ts": "export const c = new OpenAI({ apiKey: import.meta.env.VITE_OPENAI_KEY, dangerouslyAllowBrowser: true });",
+    "src/proxy.ts": "export const c = new Anthropic({ apiKey: 'added-by-secretFetch', fetch: proxied, dangerouslyAllowBrowser: true });",
+    "src/literal.ts": "export const c = new OpenAI({ apiKey: 'sk-proj-abcdefghijklmnop1234', dangerouslyAllowBrowser: true });",
   });
   const ids = codeScan(dir).findings.map((f) => f.id).filter((id) => id.startsWith("scan:ai-in-browser"));
-  assert.deepEqual(ids, ["scan:ai-in-browser:src/env.ts"]);
+  assert.deepEqual(ids.sort(), ["scan:ai-in-browser:src/env.ts", "scan:ai-in-browser:src/literal.ts"], "a placeholder with a proxy fetch is not a key");
   fs.rmSync(dir, { recursive: true });
 });
 
