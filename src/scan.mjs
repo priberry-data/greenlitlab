@@ -802,7 +802,7 @@ function scanFirebase(name, text, add) {
     const before = rules.slice(0, m.index);
     const paths = [...before.matchAll(/match\s+(\/(?:\{[^}\s]*\}|[^\s{])*)\s*\{/g)];
     const matchPath = paths.length ? paths[paths.length - 1][1] : "";
-    const wildcard = /\{\w+=\*\*\}/.test(matchPath);
+    const wildcard = /^\/\{\w+=\*\*\}$/.test(matchPath); // a catch-all for everything, not "/avatars/{path=**}"
     if (signedIn && !wildcard) continue; // "signed in" on one collection is often meant; the agent reviews it
     const writes = actions.some((a) => ["write", "create", "update", "delete"].includes(a));
     // Anyone reading a collection is often meant (listings, posts, videos, images). Flag an open read only on a

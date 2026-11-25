@@ -381,12 +381,12 @@ test("scan: anyone reading public listings in Firestore is fine; people's data, 
   const dir = project({
     "package.json": "{}",
     "firestore.rules": "service cloud.firestore {\n  match /databases/{database}/documents {\n    match /leads/{id} { allow read: if request.auth.uid == id; }\n    match /properties/{id} { allow read: if true; }\n    match /videos/{v}/comments/{c} { allow read: if true; }\n    match /users/{uid} { allow read: if true; }\n    match /listings/{id} { allow write: if true; }\n    match /{document=**} { allow read: if true; }\n  }\n}\n",
-    "storage.rules": "service firebase.storage { match /b/{bucket}/o { match /images/{f} { allow read: if true; } match /uploads/{uid}/{f} { allow read: if true; } } }\n",
+    "storage.rules": "service firebase.storage { match /b/{bucket}/o { match /images/{f} { allow read: if true; } match /avatars/{u}/{p=**} { allow read: if true; } match /uploads/{uid}/{f} { allow read: if true; } } }\n",
   });
   const f = codeScan(dir).findings.filter((x) => x.id.startsWith("scan:firebase-open:"));
   const lines = f.map((x) => x.where).sort();
   assert.deepEqual(lines, ["firestore.rules:6", "firestore.rules:7", "firestore.rules:8", "storage.rules:1"], "a sibling path (leads) above properties does not make properties personal");
-  assert.equal(f.filter((x) => x.where === "storage.rules:1").length, 1, "uploads/ is flagged, images/ is not");
+  assert.equal(f.filter((x) => x.where === "storage.rules:1").length, 1, "uploads/ is flagged; images/ and avatars/{p=**} are not");
   fs.rmSync(dir, { recursive: true });
 });
 
