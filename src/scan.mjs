@@ -22,7 +22,31 @@ const SECRET_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}[A-Z0-9_]*?(?:SECRET(?:_ACCE
 // A key for a paid service behind a public prefix (VITE_OPENAI_API_KEY) is the same mistake under another name.
 // Keys made to be public (Stripe publishable, Supabase anon) are left out.
 const PAID = "OPENAI|ANTHROPIC|CLAUDE|GEMINI|GOOGLE_AI|GOOGLE_GENAI|GROQ|OPENROUTER|MISTRAL|PERPLEXITY|REPLICATE|HUGGINGFACE|HF|DEEPSEEK|XAI|GROK|COHERE|TOGETHER|FIREWORKS|ELEVENLABS|DEEPGRAM|ASSEMBLYAI|PINECONE|VOYAGE|FAL|RUNWAY|STABILITY|TAVILY|SERPAPI|FIRECRAWL|EXA|RESEND|SENDGRID|MAILGUN|POSTMARK|BREVO|TWILIO|GITHUB|STRIPE|PAYPAL|RAZORPAY|LEMONSQUEEZY|LEMON_SQUEEZY|PADDLE|AWS|NOTION|AIRTABLE|SLACK|DISCORD|TELEGRAM|SHOPIFY|HUBSPOT|MAPBOX_SECRET|ALGOLIA_ADMIN|UPSTASH";
-const PAID_KEY_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}(?![A-Z0-9_]*(?:PUBLISHABLE|_PK(?:_|$)|PUBLIC_KEY|ANON|CLIENT_ID|SITE_KEY|APP_ID|PROJECT_ID|ACCOUNT_ID|MEASUREMENT))[A-Z0-9_]*?(?:${PAID})[A-Z0-9_]*?(?:KEY|TOKEN))(?![A-Z0-9_])`, "g");
+const PAID_KEY_NAME = new RegExp(`\\b(${PUBLIC_PREFIX}(?![A-Z0-9_]*(?:PUBLISHABLE|_PK(?:_|$)|PUBLIC_KEY|ANON|CLIENT_ID|SITE_KEY|APP_ID|PROJECT_ID|ACCOUNT_ID|MEASUREMENT|STOREFRONT))[A-Z0-9_]*?(?:${PAID})[A-Z0-9_]*?(?:KEY|TOKEN))(?![A-Z0-9_])`, "g");
+const SAMPLE_PATH = /(^|\/)(examples?|fixtures?|__fixtures__|test-fixtures|testdata|__tests__)\/|^tests?\/|(^|\/)test_[^/]*\.py$|_test\.(py|go|rb)$/i;
+// A folder of SQL written for MySQL or SQLite: one file with their syntax marks the whole folder.
+const NOT_PG = /\bAUTO_?INCREMENT\b|\bENGINE\s*=|\bPRAGMA\s|\bWITHOUT\s+ROWID\b|\bINSERT\s+OR\s+(IGNORE|REPLACE)\b|datetime\(\s*'now'|\bsqlite\b/i;
+const notPgDirs = new Map();
+function notPostgres(dir) {
+  if (!notPgDirs.has(dir)) {
+    let hit = false;
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith(".sql")) continue;
+        const p = path.join(dir, f);
+        if (fs.statSync(p).size < 4 * 1024 * 1024 && NOT_PG.test(fs.readFileSync(p, "utf8"))) { hit = true; break; }
+      }
+    } catch {}
+    notPgDirs.set(dir, hit);
+  }
+  return notPgDirs.get(dir);
+}
+// A name written in a comment (a doc line, a commented-out example) ships nothing to the browser.
+function inComment(text, index) {
+  const start = text.lastIndexOf("\n", index - 1) + 1;
+  const before = text.slice(start, index);
+  return /^\s*(\*|\/\*|\/\/|#|--|<!--)/.test(before) || /(^|[^:"'`])\/\/[^"'`]*$/.test(before);
+}
 // Keys recognised by their shape, wherever they're written. Only the kind and the place are ever reported.
 const KEY_SHAPES = [
   ["a live Stripe secret key", /\b[rs]k_live_[0-9A-Za-z]{10,}/g],
@@ -273,6 +297,8 @@ export function codeScan(dir = ".") {
   for (const file of files) {
     const name = rel(file);
     if (/\.(test|spec)\.[a-z]+$/i.test(name)) continue;
+    // Examples, fixtures and tests aren't the app people use: security tools plant leaks there on purpose.
+    if (SAMPLE_PATH.test(name)) continue;
     if (/(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lock|composer\.lock)$/.test(name)) continue;
     let text = "";
     try {
@@ -293,6 +319,7 @@ export function codeScan(dir = ".") {
     // Names only: a secret behind a public prefix is copied into the code every visitor downloads.
     for (const m of [...text.matchAll(SECRET_NAME), ...text.matchAll(PAID_KEY_NAME)]) {
       if (isEnv && !new RegExp(`^\\s*(?:export\\s+)?${m[1]}\\s*=`, "m").test(text)) continue;
+      if (!isEnv && inComment(text, m.index)) continue;
       add({ id: `scan:public-secret:${m[1]}`, severity: "critical", where: `${name}:${lineOf(text, m.index)}`, title: `The secret ${m[1]} is named so it ships to the browser`, why: "Anything whose name starts with a public prefix (VITE_, NEXT_PUBLIC_ and the like) is copied into the JavaScript every visitor downloads. A secret there is public.", fix: "Rename it without the public prefix and use it only in backend code.", first: "Treat this key as leaked if the app has ever been deployed with it: revoke it and make a new one.", prompt: `My project has a secret named ${m[1]}. The public prefix means it is built into the frontend, where anyone can read it. Rename it without the prefix, move every use of it into backend code (an edge function or server route) that checks the user is signed in, and confirm it no longer appears anywhere in the frontend build. List the files you changed.` });
     }
     if (isEnv) continue;
@@ -304,6 +331,9 @@ export function codeScan(dir = ".") {
     }
 
     if (name.endsWith(".sql")) {
+      // Row Level Security is a Postgres idea. A MySQL or SQLite schema, or SQL in an examples or fixtures
+      // folder, isn't the app's Supabase database. Anything under supabase/ always counts.
+      if (!/(^|\/)supabase\//.test(name) && notPostgres(path.dirname(file))) continue;
       scanSql(name, text);
       continue;
     }
@@ -366,6 +396,8 @@ export function codeScan(dir = ".") {
         const v = m[2] ?? m[3] ?? m[4] ?? "";
         if (!v || /^(process|import|os\.|env|config|settings|\$|\{|true|false|null|none|undefined)/i.test(v) || PLACEHOLDER.test(v) && !/secret|changeme/i.test(v)) continue;
         if (/\.(example|sample)\b/.test(name)) continue;
+        // A list of names, like ['publishableKey', 'secretKey', 'webhookSecret'], is not a secret.
+        if (/["'`]$/.test(code.slice(0, m.index)) && /[[,]\s*["'`]$/.test(code.slice(Math.max(0, m.index - 40), m.index))) continue;
         const line = lineOf(code, m.index);
         add({ id: `scan:hardcoded-auth-secret:${name}`, severity: "high", where: `${name}:${line}`, title: "A login secret is written into the code", why: "The secret that signs login tokens or sessions is a fixed value in this file. Anyone who reads it can make a valid login for any user. Invicti found the same few values (like \"supersecretkey\") in over a thousand AI-generated apps.", fix: "Generate a long random secret, keep it in an environment variable, and fail to start if it's missing.", first: "Change the secret in production: every token signed with the old one stays valid until you do.", prompt: `${name} line ${line} sets the secret that signs logins or sessions to a fixed value (or falls back to one when the environment variable is missing). Don't show me the value. Make the app read it only from an environment variable, refuse to start if it isn't set, and tell me how to generate a long random one. Then remind me that changing it signs everyone out.` });
         break;
