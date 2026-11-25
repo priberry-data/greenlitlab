@@ -647,7 +647,7 @@ export function codeScan(dir = ".") {
     }
     // Reading a whole table is often meant (products, courses), so those are gathered into one question below.
     if (p.action === "select") {
-      if (!publicRead[who].some((t) => t.table === table)) publicRead[who].push({ table, where: p.where, people: Boolean(created.get(p.table)?.people) });
+      if (!publicRead[who].some((t) => t.table === table)) publicRead[who].push({ table, where: p.where, people: Boolean(created.get(p.table)?.people), known: created.has(p.table) });
       continue;
     }
     // Adding rows is right for a contact form, a waitlist or a log. Changing and deleting rarely is.
