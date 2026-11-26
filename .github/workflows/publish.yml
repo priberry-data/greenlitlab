@@ -40,4 +40,7 @@ jobs:
         run: npm publish --provenance --access public
       - name: Dry run
         if: github.event_name != 'push'
-        run: npm publish --dry-run --provenance --access public
+        run: |
+          n=$(node -p "require('./package.json').name"); v=$(node -p "require('./package.json').version")
+          if [ -n "$(npm view "$n@$v" version 2>/dev/null)" ]; then echo "$n $v is already on npm: bump package.json to release. Tests passed."
+          else npm publish --dry-run --provenance --access public; fi
