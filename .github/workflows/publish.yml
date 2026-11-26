@@ -8,8 +8,8 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 permissions:
-  contents: read
-  id-token: write
+  contents: write # the GitHub release
+  id-token: write # npm trusted publishing
 concurrency: publish
 jobs:
   publish:
@@ -37,7 +37,20 @@ jobs:
         run: npm test
       - name: Publish
         if: github.event_name == 'push'
-        run: npm publish --provenance --access public
+        run: |
+          n=$(node -p "require('./package.json').name"); v=$(node -p "require('./package.json').version")
+          if [ -n "$(npm view "$n@$v" version 2>/dev/null)" ]; then echo "$n $v is already on npm, nothing to publish"
+          else npm publish --provenance --access public; fi
+      - name: GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          gh release view "v$v" >/dev/null 2>&1 && { echo "release v$v exists"; exit 0; }
+          awk -v h="## $v" '$0==h{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+          gh release create "v$v" --title "v$v" --notes-file notes.md --verify-tag
       - name: Dry run
         if: github.event_name != 'push'
         run: |
