@@ -18,7 +18,7 @@ export function publicTarget(input) {
     return { error: "Enter the public address of your app, like myapp.lovable.app." };
   // Names that exist only to point at private addresses.
   if (/(^|\.)(nip\.io|sslip\.io|xip\.io|localtest\.me|lvh\.me|vcap\.me)$/.test(h)) return { error: "Enter the public address of your app, like myapp.lovable.app." };
-  if (/(^|\.)priberry\.com$/.test(h) && !["greenlit.priberry.com", "crumple.priberry.com", "tare.priberry.com", "priberry.com"].includes(h)) return { error: "Enter the public address of your app." };
+  if (/(^|\.)priberry\.com$/.test(h) && !["greenlit.priberry.com", "crumple.priberry.com", "tare.priberry.com", "markos.priberry.com", "priberry.com"].includes(h)) return { error: "Enter the public address of your app." };
   return { url: `${u.protocol}//${h}${u.pathname === "/" ? "/" : u.pathname}` };
 }
 
