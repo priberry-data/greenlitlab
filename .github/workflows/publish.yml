@@ -1,0 +1,43 @@
+# Publishes to npm from GitHub, with no stored token: npm trusts this workflow (trusted publishing, OIDC)
+# and attaches signed provenance, so anyone can check a version was built from this repo at that tag.
+# Release: bump package.json on main, then push a tag `vX.Y.Z` that matches it.
+# Run it by hand (Actions → Publish to npm → Run workflow) for a dry run that publishes nothing.
+name: Publish to npm
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency: publish
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: npm new enough for trusted publishing
+        run: npm install -g npm@^11.5.1 && npm --version
+      - name: Install
+        run: |
+          if [ -f package-lock.json ]; then npm ci --ignore-scripts --no-audit --no-fund
+          elif node -e "process.exit(Object.keys(require('./package.json').dependencies||{}).length?0:1)"; then npm install --ignore-scripts --no-audit --no-fund
+          fi
+      - name: Tag matches package.json, and is on main
+        if: github.event_name == 'push'
+        run: |
+          v=$(node -p "require('./package.json').version")
+          [ "$GITHUB_REF_NAME" = "v$v" ] || { echo "Tag $GITHUB_REF_NAME doesn't match package.json $v"; exit 1; }
+          git fetch -q origin main && git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "Tag isn't on main"; exit 1; }
+      - name: Test
+        run: npm test
+      - name: Publish
+        if: github.event_name == 'push'
+        run: npm publish --provenance --access public
+      - name: Dry run
+        if: github.event_name != 'push'
+        run: npm publish --dry-run --provenance --access public
